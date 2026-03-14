@@ -1,0 +1,1565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RoadGuard AI — Road Safety Intelligence Platform</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Exo+2:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+/* ── Variables ──────────────────────────────────────────── */
+:root {
+  --bg:      #03060a;
+  --s1:      #050b12;
+  --s2:      #070f18;
+  --card:    #091420;
+  --b1:      #0f2030;
+  --b2:      #173040;
+
+  --amber:   #ffb400;
+  --amber2:  #ffd060;
+  --red:     #ff2d55;
+  --green:   #00e676;
+  --blue:    #00b4ff;
+  --cyan:    #00e5ff;
+  --orange:  #ff6b00;
+  --purple:  #b06aff;
+  --teal:    #00c9a7;
+
+  --text:    #b8d4e8;
+  --muted:   #2e5068;
+  --bright:  #e2f2ff;
+
+  --font-head: 'Orbitron', sans-serif;
+  --font-body: 'Exo 2', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* ── Reset ──────────────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text)}
+
+/* ── Scan-line CRT effect ────────────────────────────────── */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
+  background:repeating-linear-gradient(
+    0deg,transparent,transparent 2px,
+    rgba(0,0,0,.12) 2px,rgba(0,0,0,.12) 4px
+  );
+}
+/* Moving scan beam */
+body::after{
+  content:'';position:fixed;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,transparent 0%,var(--cyan) 40%,var(--blue) 60%,transparent 100%);
+  opacity:.18;animation:scanbeam 6s linear infinite;pointer-events:none;z-index:9998;
+}
+@keyframes scanbeam{0%{top:-3px}100%{top:100vh}}
+
+/* ── Layout ──────────────────────────────────────────────── */
+.shell{display:grid;grid-template-columns:220px 1fr;grid-template-rows:56px 1fr;height:100vh}
+
+/* ── Topbar ──────────────────────────────────────────────── */
+.topbar{
+  grid-column:1/-1;
+  background:var(--s1);
+  border-bottom:1px solid var(--b1);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;
+  position:relative;overflow:hidden;
+}
+.topbar::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--cyan),var(--amber),var(--cyan),transparent);
+  animation:topline 4s linear infinite;
+}
+@keyframes topline{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+
+.logo{display:flex;align-items:center;gap:12px}
+.logo-icon{
+  width:34px;height:34px;border-radius:6px;
+  background:linear-gradient(135deg,var(--amber),var(--orange));
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;box-shadow:0 0 16px rgba(255,180,0,.4);
+}
+.logo-name{font-family:var(--font-head);font-size:15px;font-weight:700;
+  letter-spacing:2px;color:var(--bright)}
+.logo-name span{color:var(--amber)}
+.logo-tag{font-family:var(--font-mono);font-size:9px;letter-spacing:3px;
+  color:var(--muted);text-transform:uppercase;margin-top:1px}
+
+.top-center{display:flex;align-items:center;gap:24px}
+.alert-ticker{
+  font-family:var(--font-mono);font-size:10px;color:var(--amber);
+  letter-spacing:1px;padding:4px 14px;border:1px solid rgba(255,180,0,.25);
+  border-radius:2px;background:rgba(255,180,0,.05);
+  animation:pulse-border 2s ease infinite;
+}
+@keyframes pulse-border{
+  0%,100%{border-color:rgba(255,180,0,.25)}
+  50%{border-color:rgba(255,180,0,.6)}
+}
+
+.top-right{display:flex;align-items:center;gap:16px}
+.live-dot{display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;color:var(--green)}
+.ldot{width:8px;height:8px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 8px var(--green);animation:blink 1.4s ease infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.clock{font-family:var(--font-mono);font-size:13px;color:var(--muted)}
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+.sidebar{
+  background:var(--s1);border-right:1px solid var(--b1);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.sb-section{padding:10px 0}
+.sb-label{font-family:var(--font-mono);font-size:8px;letter-spacing:3px;
+  color:var(--muted);text-transform:uppercase;padding:6px 18px 4px;font-weight:700}
+.nav-item{
+  display:flex;align-items:center;gap:10px;padding:9px 18px;
+  font-size:13px;font-weight:600;letter-spacing:.3px;color:var(--muted);
+  cursor:pointer;border-left:2px solid transparent;
+  transition:all .15s;position:relative;
+}
+.nav-item:hover{color:var(--text);background:rgba(0,229,255,.03)}
+.nav-item.active{color:var(--cyan);border-left-color:var(--cyan);background:rgba(0,229,255,.05)}
+.nav-item .badge{
+  margin-left:auto;font-family:var(--font-mono);font-size:9px;
+  padding:1px 6px;border-radius:2px;font-weight:700;
+}
+.nav-sep{height:1px;background:var(--b1);margin:6px 0}
+.sb-foot{
+  margin-top:auto;padding:14px 18px;border-top:1px solid var(--b1);
+  font-family:var(--font-mono);font-size:10px;color:var(--muted);
+}
+.sb-version{color:var(--amber);font-weight:700}
+
+/* ── Main content ────────────────────────────────────────── */
+.main{overflow-y:auto;background:var(--bg);display:flex;flex-direction:column}
+.main::-webkit-scrollbar{width:3px}
+.main::-webkit-scrollbar-thumb{background:var(--b2)}
+
+.content{padding:18px 22px;flex:1}
+
+/* ── Section heading ─────────────────────────────────────── */
+.sec-head{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:14px;
+}
+.sec-title{
+  font-family:var(--font-head);font-size:11px;letter-spacing:3px;
+  text-transform:uppercase;color:var(--muted);
+  display:flex;align-items:center;gap:8px;
+}
+.sec-title::before{content:'';width:20px;height:1px;background:var(--cyan)}
+
+/* ── THREAT STRIP ────────────────────────────────────────── */
+.threat-strip{
+  display:grid;grid-template-columns:repeat(6,1fr);gap:10px;
+  margin-bottom:16px;
+}
+.ts{
+  background:var(--card);border:1px solid var(--b1);border-radius:5px;
+  padding:12px 14px;position:relative;overflow:hidden;
+  transition:border-color .2s,transform .15s;cursor:default;
+}
+.ts:hover{transform:translateY(-1px)}
+.ts::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.ts-pot::before{background:var(--amber)}
+.ts-traf::before{background:var(--blue)}
+.ts-acc::before{background:var(--red)}
+.ts-ani::before{background:var(--green)}
+.ts-nv::before{background:var(--purple)}
+.ts-wx::before{background:var(--teal)}
+
+.ts-emoji{font-size:20px;margin-bottom:6px;display:block}
+.ts-val{
+  font-family:var(--font-head);font-size:22px;font-weight:700;line-height:1;
+}
+.ts-pot  .ts-val{color:var(--amber)}
+.ts-traf .ts-val{color:var(--blue)}
+.ts-acc  .ts-val{color:var(--red)}
+.ts-ani  .ts-val{color:var(--green)}
+.ts-nv   .ts-val{color:var(--purple)}
+.ts-wx   .ts-val{color:var(--teal)}
+
+.ts-label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--muted);margin-top:4px;font-weight:600}
+.ts-sub{font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:2px}
+
+/* ── GRID LAYOUTS ────────────────────────────────────────── */
+.row{display:grid;gap:12px;margin-bottom:12px}
+.row-3-1{grid-template-columns:1.6fr 1fr}
+.row-3{grid-template-columns:1fr 1fr 1fr}
+.row-2{grid-template-columns:1fr 1fr}
+.row-4{grid-template-columns:repeat(4,1fr)}
+
+/* ── PANEL ───────────────────────────────────────────────── */
+.panel{background:var(--card);border:1px solid var(--b1);border-radius:6px;overflow:hidden}
+.ph{padding:11px 16px;border-bottom:1px solid var(--b1);
+  display:flex;align-items:center;justify-content:space-between}
+.pt{font-family:var(--font-head);font-size:10px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--bright)}
+.ptag{font-family:var(--font-mono);font-size:9px;color:var(--muted);
+  background:var(--s2);padding:2px 8px;border-radius:2px;border:1px solid var(--b1)}
+.pb{padding:14px 16px}
+
+/* ── SCANNER ─────────────────────────────────────────────── */
+.scanner-wrap{position:relative}
+.drop-zone{
+  border:1.5px dashed var(--b2);border-radius:5px;
+  padding:24px 16px;text-align:center;cursor:pointer;
+  transition:all .2s;position:relative;
+  background:repeating-linear-gradient(
+    45deg,transparent,transparent 10px,
+    rgba(15,32,48,.4) 10px,rgba(15,32,48,.4) 20px
+  );
+}
+.drop-zone:hover,.drop-zone.over{
+  border-color:var(--cyan);background:rgba(0,229,255,.03);
+}
+.drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.dz-ico{font-size:30px;margin-bottom:8px;display:block}
+.dz-txt{font-size:15px;font-weight:700;color:var(--bright);letter-spacing:.5px}
+.dz-sub{font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:4px}
+
+.preview{display:none;margin-top:10px;border-radius:4px;overflow:hidden;
+  border:1px solid var(--b1);position:relative}
+.preview img{width:100%;max-height:160px;object-fit:cover;display:block}
+.preview-overlay{
+  position:absolute;inset:0;
+  background:linear-gradient(to top,rgba(3,6,10,.9),transparent 50%);
+  display:flex;align-items:flex-end;padding:10px;
+}
+.preview-cond{font-family:var(--font-mono);font-size:10px;color:var(--amber)}
+
+.scan-btn{
+  width:100%;margin-top:10px;padding:11px;border:none;border-radius:4px;
+  font-family:var(--font-head);font-size:11px;font-weight:700;
+  letter-spacing:2px;cursor:pointer;text-transform:uppercase;
+  background:linear-gradient(135deg,var(--cyan) 0%,var(--blue) 100%);
+  color:var(--bg);transition:all .15s;
+}
+.scan-btn:hover{filter:brightness(1.1);transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,180,255,.3)}
+.scan-btn:disabled{background:var(--b1);color:var(--muted);cursor:not-allowed;transform:none;box-shadow:none}
+
+/* ── RESULT CARDS ────────────────────────────────────────── */
+.results-grid{
+  display:none;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;
+}
+.results-grid.show{display:grid;animation:fadeup .3s ease}
+@keyframes fadeup{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+.rc{background:var(--s2);border:1px solid var(--b1);border-radius:4px;padding:10px 12px}
+.rc-head{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.rc-lbl{font-family:var(--font-mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase}
+.rc-val{font-family:var(--font-head);font-size:22px;font-weight:700}
+.rc-sub{font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:2px}
+.ca{color:var(--amber)} .cr{color:var(--red)}
+.cb{color:var(--blue)}  .cg{color:var(--green)}
+.cp{color:var(--purple)}.ct{color:var(--teal)}
+
+/* ── ROAD SCORE GAUGE ────────────────────────────────────── */
+.score-wrap{display:flex;flex-direction:column;align-items:center;padding:10px 0}
+.gauge-ring{position:relative;width:120px;height:120px;margin:0 auto}
+.gauge-ring svg{transform:rotate(-90deg)}
+.gauge-bg{fill:none;stroke:var(--b1);stroke-width:10}
+.gauge-fill{fill:none;stroke-width:10;stroke-linecap:round;
+  transition:stroke-dashoffset .8s cubic-bezier(.34,1.56,.64,1)}
+.gauge-text{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+}
+.gauge-num{font-family:var(--font-head);font-size:28px;font-weight:900}
+.gauge-grade{font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-top:2px}
+.score-action{
+  font-family:var(--font-mono);font-size:10px;text-align:center;
+  color:var(--muted);margin-top:12px;padding:6px 12px;
+  background:var(--s2);border-radius:3px;border:1px solid var(--b1);
+  max-width:220px;line-height:1.4;
+}
+
+/* ── COST BAR ────────────────────────────────────────────── */
+.cost-display{text-align:center;padding:10px 0}
+.cost-inr{font-family:var(--font-head);font-size:28px;font-weight:700;color:var(--amber)}
+.cost-usd{font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-top:2px}
+.cost-bar{height:6px;background:var(--b1);border-radius:3px;margin:10px 0;overflow:hidden}
+.cost-fill{height:100%;background:linear-gradient(90deg,var(--green),var(--amber),var(--red));
+  border-radius:3px;transition:width .8s ease}
+.cost-items{display:flex;flex-direction:column;gap:6px}
+.cost-row{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:10px}
+.cost-row .lbl{color:var(--muted)}
+.cost-row .val{color:var(--text);font-weight:600}
+
+/* ── NIGHT VISION PANEL ──────────────────────────────────── */
+.nv-compare{display:none;gap:6px;margin-top:10px}
+.nv-compare.show{display:grid;grid-template-columns:1fr 1fr;animation:fadeup .3s ease}
+.nv-frame{border-radius:4px;overflow:hidden;border:1px solid var(--b1);position:relative}
+.nv-frame img{width:100%;height:110px;object-fit:cover;display:block}
+.nv-label{
+  position:absolute;top:6px;left:6px;
+  font-family:var(--font-mono);font-size:9px;font-weight:700;
+  padding:2px 7px;border-radius:2px;letter-spacing:1px;
+}
+.nv-before .nv-label{background:rgba(0,0,0,.7);color:var(--muted)}
+.nv-after  .nv-label{background:rgba(0,230,118,.15);color:var(--green)}
+
+.cond-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.ctag{
+  font-family:var(--font-mono);font-size:9px;padding:2px 8px;
+  border-radius:2px;border:1px solid;letter-spacing:.5px;
+}
+
+/* ── WEATHER RISK ────────────────────────────────────────── */
+.wx-display{text-align:center;padding:10px 0}
+.wx-score{font-family:var(--font-head);font-size:36px;font-weight:900}
+.wx-level{font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-top:3px}
+.wx-meter{height:8px;background:var(--b1);border-radius:4px;margin:10px 0;overflow:hidden}
+.wx-fill{height:100%;border-radius:4px;transition:width .8s ease;
+  background:linear-gradient(90deg,var(--green),var(--amber),var(--red))}
+.wx-rec{
+  font-family:var(--font-mono);font-size:10px;color:var(--muted);
+  padding:7px 10px;background:var(--s2);border-radius:3px;
+  border:1px solid var(--b1);line-height:1.4;text-align:left;
+}
+.wx-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.wx-tag{font-family:var(--font-mono);font-size:9px;padding:2px 7px;
+  background:rgba(0,201,167,.08);border:1px solid rgba(0,201,167,.2);
+  color:var(--teal);border-radius:2px}
+
+/* ── DEPTH METER ─────────────────────────────────────────── */
+.depth-list{display:flex;flex-direction:column;gap:6px}
+.depth-item{
+  display:flex;align-items:center;gap:10px;
+  background:var(--s2);border:1px solid var(--b1);border-radius:3px;padding:8px 10px;
+}
+.depth-num{font-family:var(--font-mono);font-size:10px;color:var(--muted);width:22px}
+.depth-bar-wrap{flex:1;height:6px;background:var(--b1);border-radius:3px;overflow:hidden}
+.depth-bar{height:100%;border-radius:3px;transition:width .6s ease}
+.depth-cat{font-family:var(--font-mono);font-size:10px;font-weight:700;width:60px;text-align:right}
+.depth-cm{font-family:var(--font-mono);font-size:9px;color:var(--muted);width:50px;text-align:right}
+
+/* ── CHARTS ──────────────────────────────────────────────── */
+.chart-box{height:160px;position:relative}
+
+/* ── LOG TABLE ───────────────────────────────────────────── */
+.log-wrap{overflow-x:auto;max-height:200px;overflow-y:auto}
+.log-wrap::-webkit-scrollbar{height:3px;width:3px}
+.log-wrap::-webkit-scrollbar-thumb{background:var(--b2)}
+.logt{width:100%;border-collapse:collapse;font-family:var(--font-mono);font-size:11px}
+.logt th{padding:7px 10px;text-align:left;font-size:9px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--b1);
+  position:sticky;top:0;background:var(--card)}
+.logt td{padding:8px 10px;border-bottom:1px solid rgba(15,32,48,.8)}
+.logt tr:hover td{background:rgba(255,255,255,.01)}
+.logt tr:last-child td{border:none}
+
+.pill{display:inline-block;padding:1px 6px;border-radius:2px;font-size:9px;
+  font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:1px}
+.p-pot{background:rgba(255,180,0,.1);color:var(--amber)}
+.p-traf{background:rgba(0,180,255,.1);color:var(--blue)}
+.p-acc{background:rgba(255,45,85,.1);color:var(--red)}
+.p-ani{background:rgba(0,230,118,.1);color:var(--green)}
+.p-nv{background:rgba(176,106,255,.1);color:var(--purple)}
+.p-safe{background:rgba(46,80,104,.2);color:var(--muted)}
+
+/* ── LOADING STATES ──────────────────────────────────────── */
+.spin{
+  display:inline-block;width:14px;height:14px;vertical-align:middle;
+  margin-right:7px;border-radius:50%;
+  border:2px solid rgba(0,0,0,.15);border-top-color:var(--bg);
+  animation:spin .6s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── ALERT FLASH ─────────────────────────────────────────── */
+.alert-flash{
+  display:none;position:fixed;top:70px;right:20px;z-index:9000;
+  padding:12px 20px;border-radius:5px;font-family:var(--font-mono);font-size:11px;
+  border:1px solid;animation:slidein .3s ease;
+  max-width:320px;line-height:1.5;
+}
+@keyframes slidein{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.af-high{background:rgba(255,45,85,.12);border-color:rgba(255,45,85,.4);color:var(--red)}
+.af-medium{background:rgba(255,180,0,.1);border-color:rgba(255,180,0,.35);color:var(--amber)}
+.af-info{background:rgba(0,229,255,.07);border-color:rgba(0,229,255,.25);color:var(--cyan)}
+
+/* ── PROGRESS BAR ────────────────────────────────────────── */
+.pbar{height:3px;background:var(--b1);margin-top:8px;border-radius:2px;overflow:hidden;display:none}
+.pbar.show{display:block}
+.pbar-fill{height:100%;background:var(--cyan);width:0;transition:width .1s linear}
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media(max-width:1100px){
+  .threat-strip{grid-template-columns:repeat(3,1fr)}
+  .row-3{grid-template-columns:1fr 1fr}
+  .row-4{grid-template-columns:1fr 1fr}
+}
+@media(max-width:800px){
+  .shell{grid-template-columns:1fr;grid-template-rows:56px auto 1fr}
+  .sidebar{display:none}
+  .threat-strip{grid-template-columns:repeat(2,1fr)}
+  .row-3-1,.row-3,.row-2,.row-4{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- Alert flash -->
+<div class="alert-flash" id="alertFlash"></div>
+
+<div class="shell">
+
+<!-- ═══ TOPBAR ═══════════════════════════════════════════ -->
+<header class="topbar">
+  <div class="logo">
+    <div class="logo-icon">🛡️</div>
+    <div>
+      <div class="logo-name">Road<span>Guard</span> AI</div>
+      <div class="logo-tag">Road Safety Intelligence Platform</div>
+    </div>
+  </div>
+
+  <div class="top-center">
+    <div class="alert-ticker" id="tickerText">⚡ SYSTEM READY — ALL MODULES ONLINE</div>
+  </div>
+
+  <div class="top-right">
+    <div class="live-dot"><div class="ldot"></div>LIVE</div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+</header>
+
+<!-- ═══ SIDEBAR ══════════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sb-section">
+    <div class="sb-label">Core</div>
+    <div class="nav-item active" onclick="showTab('scanner')">
+      🔬 <span>Multi Scan</span>
+      <span class="badge" style="background:rgba(0,229,255,.1);color:var(--cyan)">NEW</span>
+    </div>
+    <div class="nav-item" onclick="showTab('nightvision')">
+      🌙 <span>Night Vision</span>
+      <span class="badge" style="background:rgba(176,106,255,.1);color:var(--purple)">AI</span>
+    </div>
+    <div class="nav-item" onclick="showTab('roadscore')">
+      📊 <span>Road Score</span>
+    </div>
+  </div>
+  <div class="nav-sep"></div>
+  <div class="sb-section">
+    <div class="sb-label">Analytics</div>
+    <div class="nav-item" onclick="showTab('analytics')">
+      📈 <span>Analytics</span>
+    </div>
+    <div class="nav-item" onclick="showTab('log')">
+      📋 <span>Detection Log</span>
+    </div>
+  </div>
+  <div class="nav-sep"></div>
+  <div class="sb-section">
+    <div class="sb-label">Features</div>
+    <div class="nav-item" onclick="window.location.href='/heatmap'">🗺️ <span>Heatmap</span></div>
+    <div class="nav-item" onclick="window.location.href='/live'">📹 <span>Live Feed</span></div>
+  </div>
+  <div class="sb-foot">
+    <div style="color:var(--muted);margin-bottom:3px">RoadGuard AI</div>
+    <div class="sb-version">v2.0 Hackathon Edition</div>
+  </div>
+</aside>
+
+<!-- ═══ MAIN ══════════════════════════════════════════════ -->
+<main class="main">
+<div class="content">
+
+  <!-- THREAT STRIP -->
+  <div class="threat-strip">
+    <div class="ts ts-pot">
+      <span class="ts-emoji">🛣️</span>
+      <div class="ts-val" id="ts-potholes">—</div>
+      <div class="ts-label">Road Damage</div>
+      <div class="ts-sub" id="ts-pot-sub">Pothole · Crack · Patch</div>
+    </div>
+    <div class="ts ts-traf">
+      <span class="ts-emoji">🚗</span>
+      <div class="ts-val" id="ts-vehicles">—</div>
+      <div class="ts-label">Vehicles</div>
+      <div class="ts-sub" id="ts-traf-sub">Traffic density</div>
+    </div>
+    <div class="ts ts-acc">
+      <span class="ts-emoji">💥</span>
+      <div class="ts-val" id="ts-accidents">—</div>
+      <div class="ts-label">Accident Risk</div>
+      <div class="ts-sub" id="ts-acc-sub">Collision analysis</div>
+    </div>
+    <div class="ts ts-ani">
+      <span class="ts-emoji">🐄</span>
+      <div class="ts-val" id="ts-animals">—</div>
+      <div class="ts-label">Animals</div>
+      <div class="ts-sub" id="ts-ani-sub">On-road hazard</div>
+    </div>
+    <div class="ts ts-nv">
+      <span class="ts-emoji">🌙</span>
+      <div class="ts-val" id="ts-enhanced">—</div>
+      <div class="ts-label">Enhanced</div>
+      <div class="ts-sub" id="ts-nv-sub">Vision corrections</div>
+    </div>
+    <div class="ts ts-wx">
+      <span class="ts-emoji">⛅</span>
+      <div class="ts-val" id="ts-wxrisk">—</div>
+      <div class="ts-label">Weather Risk</div>
+      <div class="ts-sub" id="ts-wx-sub">Road conditions</div>
+    </div>
+  </div>
+
+  <!-- ══ SCANNER TAB ══════════════════════════════════════ -->
+  <div id="tab-scanner">
+    <div class="row row-3-1">
+
+      <!-- Left: Upload + full results -->
+      <div class="panel">
+        <div class="ph">
+          <div class="pt">🔬 Full Threat + Vision Scanner</div>
+          <div class="ptag" id="scan-tag">YOLOv8 × Enhance × Intelligence</div>
+        </div>
+        <div class="pb">
+
+          <div class="drop-zone" id="dropZone">
+            <input type="file" id="fileInput" accept="image/*">
+            <span class="dz-ico">🛣️</span>
+            <div class="dz-txt">Drop any road image here</div>
+            <div class="dz-sub">Pothole · Traffic · Animal · Night Vision · Weather</div>
+          </div>
+
+          <div class="pbar" id="pbar"><div class="pbar-fill" id="pbar-fill"></div></div>
+
+          <div class="preview" id="previewBox">
+            <img id="previewImg" src="">
+            <div class="preview-overlay">
+              <div class="preview-cond" id="preview-cond">Analysing image...</div>
+            </div>
+          </div>
+
+          <button class="scan-btn" id="scanBtn" onclick="runScan()" disabled>
+            ⚡ &nbsp;RUN FULL THREAT SCAN
+          </button>
+
+          <!-- Night vision compare -->
+          <div class="nv-compare" id="nvCompare">
+            <div class="nv-frame nv-before">
+              <img id="nv-orig" src="">
+              <span class="nv-label">ORIGINAL</span>
+            </div>
+            <div class="nv-frame nv-after">
+              <img id="nv-enh" src="">
+              <span class="nv-label">✨ ENHANCED</span>
+            </div>
+          </div>
+
+          <!-- Condition tags -->
+          <div class="cond-tags" id="condTags" style="display:none"></div>
+
+          <!-- All result cards -->
+          <!-- Damage type mini-breakdown — NEW -->
+          <div id="damageBreakdown" style="display:none;margin-top:10px;
+            background:var(--s2);border:1px solid var(--b1);border-radius:4px;padding:10px 12px">
+            <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:2px;
+              color:var(--muted);text-transform:uppercase;margin-bottom:8px">Damage Breakdown</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px">
+              <div style="text-align:center">
+                <div style="font-family:var(--font-head);font-size:20px;font-weight:700;
+                  color:var(--amber)" id="dmg-potholes">0</div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted)">Potholes</div>
+              </div>
+              <div style="text-align:center">
+                <div style="font-family:var(--font-head);font-size:20px;font-weight:700;
+                  color:var(--orange)" id="dmg-cracks">0</div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted)">Cracks</div>
+              </div>
+              <div style="text-align:center">
+                <div style="font-family:var(--font-head);font-size:20px;font-weight:700;
+                  color:var(--blue)" id="dmg-patches">0</div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted)">Patches</div>
+              </div>
+              <div style="text-align:center">
+                <div style="font-family:var(--font-head);font-size:20px;font-weight:700;
+                  color:var(--red)" id="dmg-rutting">0</div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted)">Rutting</div>
+              </div>
+            </div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text);
+              margin-top:8px;padding-top:8px;border-top:1px solid var(--b1)"
+              id="dmg-summary">—</div>
+          </div>
+
+          <div class="results-grid" id="resultsGrid">
+            <div class="rc">
+              <div class="rc-head"><span>🛣️</span><span class="rc-lbl ca">Road Damage</span></div>
+              <div class="rc-val ca" id="r-count">—</div>
+              <div class="rc-sub" id="r-sev">—</div>
+            </div>
+            <div class="rc">
+              <div class="rc-head"><span>🚗</span><span class="rc-lbl cb">Traffic</span></div>
+              <div class="rc-val cb" id="r-veh">—</div>
+              <div class="rc-sub" id="r-traf">—</div>
+            </div>
+            <div class="rc">
+              <div class="rc-head"><span>💥</span><span class="rc-lbl cr">Accident</span></div>
+              <div class="rc-val cr" id="r-acc">—</div>
+              <div class="rc-sub" id="r-acc-sub">—</div>
+            </div>
+            <div class="rc">
+              <div class="rc-head"><span>🐄</span><span class="rc-lbl cg">Animals</span></div>
+              <div class="rc-val cg" id="r-ani">—</div>
+              <div class="rc-sub" id="r-ani-sub">—</div>
+            </div>
+            <div class="rc">
+              <div class="rc-head"><span>🌙</span><span class="rc-lbl cp">Vision</span></div>
+              <div class="rc-val cp" id="r-nv">—</div>
+              <div class="rc-sub" id="r-nv-sub">—</div>
+            </div>
+            <div class="rc">
+              <div class="rc-head"><span>⛅</span><span class="rc-lbl ct">Weather Risk</span></div>
+              <div class="rc-val ct" id="r-wx">—</div>
+              <div class="rc-sub" id="r-wx-sub">—</div>
+            </div>
+          </div>
+
+        </div><!-- pb -->
+      </div><!-- panel -->
+
+      <!-- Right: Road Score + Repair Cost + Weather -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+
+        <!-- Road Quality Score -->
+        <div class="panel">
+          <div class="ph">
+            <div class="pt">📊 Road Score</div>
+            <div class="ptag" id="score-grade-tag">A–F</div>
+          </div>
+          <div class="pb">
+            <div class="score-wrap">
+              <div class="gauge-ring">
+                <svg viewBox="0 0 120 120" width="120" height="120">
+                  <circle class="gauge-bg" cx="60" cy="60" r="52"/>
+                  <circle class="gauge-fill" id="gaugeFill" cx="60" cy="60" r="52"
+                    stroke="var(--green)"
+                    stroke-dasharray="326.7" stroke-dashoffset="326.7"/>
+                </svg>
+                <div class="gauge-text">
+                  <div class="gauge-num" id="gauge-num" style="color:var(--green)">—</div>
+                  <div class="gauge-grade" id="gauge-grade">NO DATA</div>
+                </div>
+              </div>
+              <div class="score-action" id="score-action">Run a scan to get road quality score</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Repair Cost -->
+        <div class="panel">
+          <div class="ph">
+            <div class="pt">💰 Repair Cost</div>
+            <div class="ptag" id="cost-urgency">—</div>
+          </div>
+          <div class="pb">
+            <div class="cost-display">
+              <div class="cost-inr" id="cost-inr">₹ —</div>
+              <div class="cost-usd" id="cost-usd">$ — USD</div>
+            </div>
+            <div class="cost-bar"><div class="cost-fill" id="cost-fill" style="width:0%"></div></div>
+            <div class="cost-items">
+              <div class="cost-row"><span class="lbl">Repair Type</span><span class="val" id="cost-type">—</span></div>
+              <div class="cost-row"><span class="lbl">Deadline</span><span class="val" id="cost-dl" style="color:var(--red)">—</span></div>
+              <div class="cost-row"><span class="lbl">Labour hrs</span><span class="val" id="cost-hrs">—</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- right col -->
+    </div><!-- row 3-1 -->
+
+    <!-- Row 2: Depth + Weather + Charts -->
+    <div class="row row-3">
+
+      <!-- Pothole Depths -->
+      <div class="panel">
+        <div class="ph">
+          <div class="pt">📏 Depth Analysis</div>
+          <div class="ptag">Per-pothole</div>
+        </div>
+        <div class="pb">
+          <div class="depth-list" id="depthList">
+            <div style="text-align:center;padding:18px;font-family:var(--font-mono);font-size:11px;color:var(--muted)">
+              Run a scan to see depth analysis
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Weather Risk -->
+      <div class="panel">
+        <div class="ph">
+          <div class="pt">⛅ Weather Risk</div>
+          <div class="ptag">Image-derived</div>
+        </div>
+        <div class="pb">
+          <div class="wx-display">
+            <div class="wx-score" id="wx-score" style="color:var(--teal)">—</div>
+            <div class="wx-level" id="wx-level" style="color:var(--teal)">NO DATA</div>
+          </div>
+          <div class="wx-meter"><div class="wx-fill" id="wx-fill" style="width:0%"></div></div>
+          <div class="wx-rec" id="wx-rec">Upload an image to detect weather conditions from road visuals.</div>
+          <div class="wx-tags" id="wx-tags"></div>
+        </div>
+      </div>
+
+      <!-- Severity Chart -->
+      <div class="panel">
+        <div class="ph">
+          <div class="pt">🥧 All-time Threats</div>
+          <div class="ptag">Distribution</div>
+        </div>
+        <div class="pb">
+          <div class="chart-box"><canvas id="sevChart"></canvas></div>
+        </div>
+      </div>
+
+    </div><!-- row 3 -->
+  </div><!-- tab-scanner -->
+
+  <!-- ══ NIGHT VISION TAB ════════════════════════════════ -->
+  <div id="tab-nightvision" style="display:none">
+    <div class="row row-2">
+      <div class="panel">
+        <div class="ph">
+          <div class="pt">🌙 Night Vision Enhancement</div>
+          <div class="ptag">CLAHE + Dehazing + Sharpening</div>
+        </div>
+        <div class="pb">
+          <div class="drop-zone" id="nvDropZone">
+            <input type="file" id="nvFileInput" accept="image/*">
+            <span class="dz-ico">🌃</span>
+            <div class="dz-txt">Drop a dark or hazy road image</div>
+            <div class="dz-sub">Night · Fog · Blur · Rain · Overcast</div>
+          </div>
+          <button class="scan-btn" id="nvBtn" onclick="runNV()" disabled style="background:linear-gradient(135deg,var(--purple),#6a3fa0)">
+            🌙 &nbsp;ENHANCE IMAGE
+          </button>
+          <div class="nv-compare" id="nvBigCompare" style="margin-top:10px">
+            <div class="nv-frame nv-before">
+              <img id="nv-big-orig" src="" style="max-height:200px">
+              <span class="nv-label">ORIGINAL</span>
+            </div>
+            <div class="nv-frame nv-after">
+              <img id="nv-big-enh" src="" style="max-height:200px">
+              <span class="nv-label">✨ ENHANCED</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="ph"><div class="pt">📊 Enhancement Report</div></div>
+        <div class="pb">
+          <div style="display:flex;flex-direction:column;gap:12px" id="nvReport">
+            <div style="text-align:center;padding:30px;font-family:var(--font-mono);font-size:11px;color:var(--muted)">
+              Upload a road image to see enhancement details
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- What each fix does -->
+    <div class="panel" style="margin-top:12px">
+      <div class="ph"><div class="pt">🔧 Enhancement Techniques Used</div></div>
+      <div class="pb">
+        <div class="row row-4" style="gap:10px">
+          <div class="rc" style="border-left:2px solid var(--purple)">
+            <div class="rc-head">🌙 <span class="rc-lbl cp">Night Vision</span></div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5">
+              CLAHE histogram equalisation on LAB L-channel. Gamma curve lift to recover shadow detail.
+            </div>
+          </div>
+          <div class="rc" style="border-left:2px solid var(--blue)">
+            <div class="rc-head">🌫️ <span class="rc-lbl cb">Dehazing</span></div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5">
+              Dark Channel Prior algorithm. Estimates atmospheric light and removes haze/fog from all channels.
+            </div>
+          </div>
+          <div class="rc" style="border-left:2px solid var(--amber)">
+            <div class="rc-head">🔘 <span class="rc-lbl ca">Sharpening</span></div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5">
+              Unsharp masking (Gaussian subtraction). Recovers edge definition lost in camera blur or rain.
+            </div>
+          </div>
+          <div class="rc" style="border-left:2px solid var(--teal)">
+            <div class="rc-head">🌈 <span class="rc-lbl ct">White Balance</span></div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5">
+              Grey-world assumption auto white balance. Corrects colour casts from artificial lighting.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ ROAD SCORE TAB ══════════════════════════════════ -->
+  <div id="tab-roadscore" style="display:none">
+    <div class="row row-2">
+      <div class="panel">
+        <div class="ph"><div class="pt">📊 Manual Road Score Calculator</div></div>
+        <div class="pb">
+          <div style="display:flex;flex-direction:column;gap:12px">
+
+            <div>
+              <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-bottom:6px">POTHOLE COUNT</div>
+              <input type="range" id="calc-potholes" min="0" max="20" value="0"
+                style="width:100%;accent-color:var(--amber)" oninput="updateCalc()">
+              <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:2px">
+                <span>0</span><span id="calc-pot-val" style="color:var(--amber)">0</span><span>20</span>
+              </div>
+            </div>
+
+            <div>
+              <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-bottom:6px">SEVERITY</div>
+              <select id="calc-sev" onchange="updateCalc()"
+                style="width:100%;background:var(--s2);border:1px solid var(--b2);color:var(--text);padding:8px;border-radius:3px;font-family:var(--font-mono);font-size:11px">
+                <option value="none">None</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+
+            <div>
+              <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-bottom:6px">VEHICLES ON ROAD</div>
+              <input type="range" id="calc-veh" min="0" max="30" value="0"
+                style="width:100%;accent-color:var(--blue)" oninput="updateCalc()">
+              <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:2px">
+                <span>0</span><span id="calc-veh-val" style="color:var(--blue)">0</span><span>30</span>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:12px">
+              <label style="display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;cursor:pointer">
+                <input type="checkbox" id="calc-animal" onchange="updateCalc()" style="accent-color:var(--green)">
+                🐄 Animal on road
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;cursor:pointer">
+                <input type="checkbox" id="calc-acc" onchange="updateCalc()" style="accent-color:var(--red)">
+                💥 Accident risk
+              </label>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="ph"><div class="pt">🎯 Live Score Result</div></div>
+        <div class="pb">
+          <div class="score-wrap" id="calcScoreWrap">
+            <div class="gauge-ring">
+              <svg viewBox="0 0 120 120" width="120" height="120">
+                <circle class="gauge-bg" cx="60" cy="60" r="52"/>
+                <circle class="gauge-fill" id="calcGaugeFill" cx="60" cy="60" r="52"
+                  stroke="var(--green)"
+                  stroke-dasharray="326.7" stroke-dashoffset="0"/>
+              </svg>
+              <div class="gauge-text">
+                <div class="gauge-num" id="calc-score-num" style="color:var(--green)">100</div>
+                <div class="gauge-grade" id="calc-score-grade">GRADE A</div>
+              </div>
+            </div>
+            <div class="score-action" id="calc-score-action">No issues detected — excellent road</div>
+          </div>
+          <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px" id="calcBreakdown"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ ANALYTICS TAB ══════════════════════════════════ -->
+  <div id="tab-analytics" style="display:none">
+    <div class="row row-2">
+      <div class="panel">
+        <div class="ph"><div class="pt">📈 7-Day Detection Trend</div></div>
+        <div class="pb"><div class="chart-box" style="height:200px"><canvas id="trendChart"></canvas></div></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><div class="pt">🥧 Severity Split</div></div>
+        <div class="pb"><div class="chart-box" style="height:200px"><canvas id="sevChart2"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- NEW — Damage type breakdown chart -->
+    <div class="row row-2" style="margin-top:0">
+      <div class="panel">
+        <div class="ph">
+          <div class="pt">🛣️ Damage Type Breakdown</div>
+          <div class="ptag">All-time totals</div>
+        </div>
+        <div class="pb"><div class="chart-box" style="height:180px"><canvas id="damageChart"></canvas></div></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><div class="pt">📊 Damage Totals</div></div>
+        <div class="pb">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div style="background:var(--s2);border:1px solid var(--b1);border-radius:4px;
+              padding:12px;text-align:center;border-top:2px solid var(--amber)">
+              <div style="font-family:var(--font-head);font-size:28px;font-weight:700;
+                color:var(--amber)" id="stat-potholes">—</div>
+              <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted);
+                margin-top:3px;letter-spacing:1px">POTHOLES</div>
+            </div>
+            <div style="background:var(--s2);border:1px solid var(--b1);border-radius:4px;
+              padding:12px;text-align:center;border-top:2px solid var(--orange)">
+              <div style="font-family:var(--font-head);font-size:28px;font-weight:700;
+                color:var(--orange)" id="stat-cracks">—</div>
+              <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted);
+                margin-top:3px;letter-spacing:1px">CRACKS</div>
+            </div>
+            <div style="background:var(--s2);border:1px solid var(--b1);border-radius:4px;
+              padding:12px;text-align:center;border-top:2px solid var(--blue)">
+              <div style="font-family:var(--font-head);font-size:28px;font-weight:700;
+                color:var(--blue)" id="stat-patches">—</div>
+              <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted);
+                margin-top:3px;letter-spacing:1px">PATCHES</div>
+            </div>
+            <div style="background:var(--s2);border:1px solid var(--b1);border-radius:4px;
+              padding:12px;text-align:center;border-top:2px solid var(--red)">
+              <div style="font-family:var(--font-head);font-size:28px;font-weight:700;
+                color:var(--red)" id="stat-rutting">—</div>
+              <div style="font-family:var(--font-mono);font-size:9px;color:var(--muted);
+                margin-top:3px;letter-spacing:1px">RUTTING</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row row-4" style="margin-top:0">
+      <div class="panel"><div class="pb" style="text-align:center">
+        <div style="font-size:10px;letter-spacing:2px;font-family:var(--font-mono);color:var(--muted);margin-bottom:6px">TOTAL SCANS</div>
+        <div style="font-family:var(--font-head);font-size:36px;color:var(--cyan)" id="stat-total">—</div>
+      </div></div>
+      <div class="panel"><div class="pb" style="text-align:center">
+        <div style="font-size:10px;letter-spacing:2px;font-family:var(--font-mono);color:var(--muted);margin-bottom:6px">HIGH RISK</div>
+        <div style="font-family:var(--font-head);font-size:36px;color:var(--red)" id="stat-high">—</div>
+      </div></div>
+      <div class="panel"><div class="pb" style="text-align:center">
+        <div style="font-size:10px;letter-spacing:2px;font-family:var(--font-mono);color:var(--muted);margin-bottom:6px">CLEAN ROADS</div>
+        <div style="font-family:var(--font-head);font-size:36px;color:var(--green)" id="stat-clean">—</div>
+      </div></div>
+      <div class="panel"><div class="pb" style="text-align:center">
+        <div style="font-size:10px;letter-spacing:2px;font-family:var(--font-mono);color:var(--muted);margin-bottom:6px">AVG SCORE</div>
+        <div style="font-family:var(--font-head);font-size:36px;color:var(--amber)" id="stat-avg">—</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ══ LOG TAB ════════════════════════════════════════ -->
+  <div id="tab-log" style="display:none">
+    <div class="panel">
+      <div class="ph">
+        <div class="pt">📋 Full Detection Log</div>
+        <div style="display:flex;gap:8px">
+          <select id="logFilter" onchange="loadLog()"
+            style="background:var(--s2);border:1px solid var(--b2);color:var(--text);padding:4px 8px;border-radius:3px;font-family:var(--font-mono);font-size:10px">
+            <option value="">All records</option>
+            <option value="high">High risk only</option>
+            <option value="medium">Medium+</option>
+          </select>
+          <div class="ptag" id="log-count">— records</div>
+        </div>
+      </div>
+      <div class="log-wrap">
+        <table class="logt">
+          <thead><tr>
+            <th>Timestamp</th><th>Source</th>
+            <th>Total</th><th>🕳️ Pot</th><th>🔱 Crack</th><th>🩹 Patch</th>
+            <th>Vehicles</th><th>Risk</th><th>Score</th>
+          </tr></thead>
+          <tbody id="logBody">
+            <tr><td colspan="9" style="text-align:center;padding:30px;color:var(--muted)">No data yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- content -->
+</main>
+
+</div><!-- shell -->
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+let scanFile = null, nvFile = null;
+let sevChart, trendChart, sevChart2;
+let enhancedCount = 0, totalEnhanced = 0;
+
+// ── Clock ────────────────────────────────────────────────
+setInterval(()=>document.getElementById('clock').textContent=
+  new Date().toLocaleTimeString(), 1000);
+
+// ── Ticker ───────────────────────────────────────────────
+const tickers = [
+  "⚡ ALL SYSTEMS ONLINE — YOLOV8 LOADED",
+  "🛡️ ROADGUARD AI v2.0 — HACKATHON EDITION",
+  "🌙 NIGHT VISION MODULE ACTIVE",
+  "📊 ROAD INTELLIGENCE ENGINE READY",
+  "🐄 ANIMAL DETECTION — 80 COCO CLASSES",
+  "💰 REPAIR COST ESTIMATOR — NHAI 2024 RATES",
+];
+let tickIdx = 0;
+setInterval(()=>{
+  tickIdx=(tickIdx+1)%tickers.length;
+  document.getElementById('tickerText').textContent=tickers[tickIdx];
+},4000);
+
+// ═══════════════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════════════
+function showTab(name){
+  ['scanner','nightvision','roadscore','analytics','log']
+    .forEach(t=>document.getElementById('tab-'+t).style.display='none');
+  document.getElementById('tab-'+name).style.display='block';
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  if(name==='analytics') loadAnalytics();
+  if(name==='log') loadLog();
+}
+
+// ═══════════════════════════════════════════════════════════
+// FILE INPUTS
+// ═══════════════════════════════════════════════════════════
+document.getElementById('fileInput').addEventListener('change',e=>{
+  scanFile=e.target.files[0]; if(!scanFile) return;
+  document.getElementById('previewImg').src=URL.createObjectURL(scanFile);
+  document.getElementById('previewBox').style.display='block';
+  document.getElementById('preview-cond').textContent='Image ready — click SCAN';
+  document.getElementById('scanBtn').disabled=false;
+  document.getElementById('resultsGrid').classList.remove('show');
+  document.getElementById('nvCompare').classList.remove('show');
+  document.getElementById('condTags').style.display='none';
+});
+
+const dz=document.getElementById('dropZone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over')});
+dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+dz.addEventListener('drop',e=>{
+  e.preventDefault();dz.classList.remove('over');
+  const f=e.dataTransfer.files[0];
+  if(f&&f.type.startsWith('image/')){
+    scanFile=f;
+    document.getElementById('previewImg').src=URL.createObjectURL(f);
+    document.getElementById('previewBox').style.display='block';
+    document.getElementById('scanBtn').disabled=false;
+  }
+});
+
+document.getElementById('nvFileInput').addEventListener('change',e=>{
+  nvFile=e.target.files[0]; if(!nvFile) return;
+  document.getElementById('nvBtn').disabled=false;
+  document.getElementById('nvBigCompare').classList.remove('show');
+});
+
+// ═══════════════════════════════════════════════════════════
+// MAIN SCAN
+// ═══════════════════════════════════════════════════════════
+async function runScan(){
+  if(!scanFile) return;
+  const btn=document.getElementById('scanBtn');
+  btn.disabled=true;
+  btn.innerHTML='<span class="spin"></span> SCANNING...';
+  animateProgress();
+
+  const form=new FormData();
+  form.append('image', scanFile);
+
+  try{
+    // Try multi-threat first, fallback to standard
+    let data;
+    try{
+      const r=await fetch('/api/detect/multithreat',{method:'POST',body:form});
+      data=await r.json();
+      if(data.error) throw new Error(data.error);
+    }catch{
+      const form2=new FormData();form2.append('image',scanFile);
+      const r2=await fetch('/api/detect/image',{method:'POST',body:form2});
+      data=await r2.json();
+    }
+    if(data.error) throw new Error(data.error);
+    renderFullResult(data);
+    showAlert('Scan complete — '+((data.active_threats||[]).length||0)+' threat(s) detected','info');
+    loadStats();
+  }catch(e){
+    showAlert('Scan error: '+e.message,'high');
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML='⚡ &nbsp;RUN FULL THREAT SCAN';
+    stopProgress();
+  }
+}
+
+function animateProgress(){
+  const bar=document.getElementById('pbar');
+  const fill=document.getElementById('pbar-fill');
+  bar.classList.add('show');
+  let w=0;
+  bar._t=setInterval(()=>{
+    w=Math.min(w+Math.random()*8,88);
+    fill.style.width=w+'%';
+  },150);
+}
+function stopProgress(){
+  const bar=document.getElementById('pbar');
+  const fill=document.getElementById('pbar-fill');
+  clearInterval(bar._t);
+  fill.style.width='100%';
+  setTimeout(()=>{bar.classList.remove('show');fill.style.width='0%';},400);
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER FULL RESULT
+// ═══════════════════════════════════════════════════════════
+function renderFullResult(d){
+  // Support both multi_detect response and plain detect response
+  const dmgCounts = d.potholes?.by_type   ?? d.damage_counts ?? {};
+  const potCount  = d.potholes?.count     ?? d.pothole_count ?? d.total_damage ?? 0;
+  const severity  = d.potholes?.severity  ?? d.severity      ?? 'none';
+  const dmgSum    = d.potholes?.summary   ?? d.damage_summary ?? severity+' severity';
+  const vehicles  = d.traffic?.vehicle_count ?? 0;
+  const accLvl    = d.accident?.accident_likelihood ?? 'none';
+  const animals   = d.animals?.total_count ?? 0;
+  const enhanced  = d.enhanced  ?? false;
+  const conds     = d.conditions ?? [];
+
+  // Damage per type
+  const pots    = dmgCounts.pothole ?? dmgCounts.potholes ?? 0;
+  const cracks  = dmgCounts.crack   ?? dmgCounts.cracks   ?? 0;
+  const patches = dmgCounts.patch   ?? dmgCounts.patches  ?? 0;
+  const rutting = dmgCounts.rutting ?? 0;
+
+  // Threat strip
+  document.getElementById('ts-potholes').textContent = potCount || '—';
+  document.getElementById('ts-pot-sub').textContent  = dmgSum;
+  document.getElementById('ts-vehicles').textContent = vehicles || '—';
+  document.getElementById('ts-traf-sub').textContent = d.traffic?.density_level || '—';
+  document.getElementById('ts-accidents').textContent= accLvl.toUpperCase();
+  document.getElementById('ts-acc-sub').textContent  = accLvl==='high' ? '⚠️ Alert!' : 'Analysed';
+  document.getElementById('ts-animals').textContent  = animals || '—';
+  document.getElementById('ts-ani-sub').textContent  = animals ? 'On road detected' : 'None detected';
+  totalEnhanced += enhanced ? 1 : 0;
+  document.getElementById('ts-enhanced').textContent = totalEnhanced || '—';
+  document.getElementById('ts-nv-sub').textContent   = enhanced ? 'Fixed: '+conds.join(', ') : 'No fixes needed';
+
+  // Damage breakdown box
+  document.getElementById('damageBreakdown').style.display = potCount > 0 ? 'block' : 'none';
+  document.getElementById('dmg-potholes').textContent = pots;
+  document.getElementById('dmg-cracks').textContent   = cracks;
+  document.getElementById('dmg-patches').textContent  = patches;
+  document.getElementById('dmg-rutting').textContent  = rutting;
+  document.getElementById('dmg-summary').textContent  = dmgSum;
+
+  // Result cards
+  setText('r-count', potCount);
+  setText('r-sev',   dmgSum);
+  setText('r-veh',   vehicles || '—');
+  setText('r-traf',  d.traffic?.density_level || '—');
+  setText('r-acc',   accLvl.toUpperCase());
+  setText('r-acc-sub', d.accident?.reasons?.[0] || 'No collision signs');
+  setText('r-ani',   animals || 'None');
+  setText('r-ani-sub', d.animals?.animal_types?.join(', ') || 'All clear');
+  setText('r-nv',    enhanced ? '✓ Fixed' : 'Clear');
+  setText('r-nv-sub', enhanced ? conds.join(' | ') : 'No enhancement needed');
+
+  // Night vision compare
+  if(enhanced && d.enhanced_image){
+    document.getElementById('nv-orig').src = d.original_image || URL.createObjectURL(scanFile);
+    document.getElementById('nv-enh').src  = d.enhanced_image;
+    document.getElementById('nvCompare').classList.add('show');
+  }
+
+  // Condition tags
+  if(conds.length){
+    document.getElementById('condTags').style.display='flex';
+    document.getElementById('condTags').innerHTML = conds.map(c=>
+      `<span class="ctag" style="color:var(--purple);border-color:rgba(176,106,255,.3)">${c}</span>`
+    ).join('');
+  }
+
+  // Weather risk
+  const wxData  = d.weather_risk || {risk_score:0,risk_level:'Clear',color:'00e676',weather_tags:[],recommendation:'Normal conditions'};
+  const wxScore = wxData.risk_score || 0;
+  document.getElementById('ts-wxrisk').textContent  = wxScore || 'OK';
+  document.getElementById('ts-wx-sub').textContent  = wxData.risk_level;
+  document.getElementById('wx-score').textContent   = wxScore;
+  document.getElementById('wx-score').style.color   = '#'+wxData.color;
+  document.getElementById('wx-level').textContent   = wxData.risk_level;
+  document.getElementById('wx-level').style.color   = '#'+wxData.color;
+  document.getElementById('wx-fill').style.width    = wxScore+'%';
+  document.getElementById('wx-rec').textContent     = wxData.recommendation || 'Drive safely';
+  document.getElementById('wx-tags').innerHTML = (wxData.weather_tags||[]).map(t=>
+    `<span class="wx-tag">${t}</span>`).join('');
+  setText('r-wx',    wxScore+'%');
+  setText('r-wx-sub', wxData.risk_level);
+
+  // Road score gauge
+  const rs = d.road_score || calcScore(potCount, severity, vehicles, animals>0, accLvl);
+  renderGauge('gaugeFill','gauge-num','gauge-grade', rs.score, rs.grade, '#'+rs.color);
+  document.getElementById('score-grade-tag').textContent = 'Grade '+rs.grade;
+  document.getElementById('score-action').textContent    = rs.action;
+
+  // Repair cost
+  const rc = d.repair_cost || {total_inr:0,total_usd:0,repair_type:'—',deadline:'—'};
+  document.getElementById('cost-inr').textContent      = '₹ '+numberFmt(rc.total_inr||0);
+  document.getElementById('cost-usd').textContent      = '$'+(rc.total_usd||0)+' USD';
+  document.getElementById('cost-fill').style.width     = Math.min(((rc.total_inr||0)/50000)*100,100)+'%';
+  document.getElementById('cost-type').textContent     = rc.repair_type || '—';
+  document.getElementById('cost-dl').textContent       = rc.deadline    || '—';
+  document.getElementById('cost-hrs').textContent      = (rc.labour_hours||'—')+' hrs';
+  document.getElementById('cost-urgency').textContent  = (rc.urgency||'none').toUpperCase();
+
+  // Depth
+  renderDepths(d.depths||[]);
+
+  document.getElementById('resultsGrid').classList.add('show');
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// NIGHT VISION TAB
+// ═══════════════════════════════════════════════════════════
+async function runNV(){
+  if(!nvFile) return;
+  const btn=document.getElementById('nvBtn');
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> ENHANCING...';
+
+  const form=new FormData();
+  form.append('image',nvFile);
+  form.append('force','true');
+
+  try{
+    const r=await fetch('/api/enhance',{method:'POST',body:form});
+    const d=await r.json();
+
+    document.getElementById('nv-big-orig').src = d.original_url||URL.createObjectURL(nvFile);
+    document.getElementById('nv-big-enh').src  = d.enhanced_url||URL.createObjectURL(nvFile);
+    document.getElementById('nvBigCompare').classList.add('show');
+
+    // Report
+    const q = d.quality||{};
+    document.getElementById('nvReport').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${metricRow('Brightness',q.brightness,'/ 255',q.brightness<60?'var(--red)':q.brightness<100?'var(--amber)':'var(--green)')}
+        ${metricRow('Contrast',q.contrast,'std dev',q.contrast<30?'var(--red)':'var(--green)')}
+        ${metricRow('Sharpness',q.blur_score,'variance',q.blur_score<80?'var(--red)':'var(--green)')}
+        ${metricRow('Saturation',q.saturation,'/ 255',q.saturation<40?'var(--amber)':'var(--green)')}
+        <div style="height:1px;background:var(--b1);margin:4px 0"></div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">FIXES APPLIED</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px">
+          ${(d.fixes_applied||[]).map(f=>`<span class="pill p-nv">${f}</span>`).join('')||'<span style="color:var(--muted)">No fixes needed</span>'}
+        </div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:6px">CONDITIONS DETECTED</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text)">${(d.conditions||['Clear']).join(', ')}</div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:4px">⏱ Processing time: ${d.processing_ms||0}ms</div>
+      </div>`;
+
+    showAlert('Enhancement complete: '+((d.fixes_applied||[]).join(', ')||'no fixes needed'),'info');
+  }catch(e){
+    document.getElementById('nvReport').innerHTML=`<div style="color:var(--red);font-family:var(--font-mono);font-size:11px">Error: ${e.message}<br><br>Make sure vision_enhance.py and /api/enhance are connected.</div>`;
+  }finally{
+    btn.disabled=false; btn.innerHTML='🌙 &nbsp;ENHANCE IMAGE';
+  }
+}
+
+function metricRow(label, val, unit, color){
+  return `<div style="display:flex;align-items:center;gap:10px">
+    <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);width:90px">${label}</div>
+    <div style="flex:1;height:5px;background:var(--b1);border-radius:3px;overflow:hidden">
+      <div style="height:100%;background:${color};width:${Math.min((val/255)*100,100)}%;border-radius:3px;transition:width .6s ease"></div>
+    </div>
+    <div style="font-family:var(--font-mono);font-size:10px;color:${color};width:70px;text-align:right">${val||'—'} ${unit}</div>
+  </div>`;
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// ROAD SCORE CALCULATOR (live sliders)
+// ═══════════════════════════════════════════════════════════
+function updateCalc(){
+  const p = +document.getElementById('calc-potholes').value;
+  const s = document.getElementById('calc-sev').value;
+  const v = +document.getElementById('calc-veh').value;
+  const a = document.getElementById('calc-animal').checked;
+  const ac= document.getElementById('calc-acc').checked;
+
+  document.getElementById('calc-pot-val').textContent = p;
+  document.getElementById('calc-veh-val').textContent = v;
+
+  const rs = calcScore(p, s, v, a, ac?'medium':'none');
+  renderGauge('calcGaugeFill','calc-score-num','calc-score-grade', rs.score, rs.grade, '#'+rs.color);
+  document.getElementById('calc-score-action').textContent = rs.action;
+
+  // Breakdown
+  const bd=document.getElementById('calcBreakdown');
+  bd.innerHTML=[
+    {l:'Pothole deduction',v:'-'+Math.min(p*7,40),c:'var(--amber)'},
+    {l:'Severity deduction',v:'-'+({none:0,low:5,medium:18,high:35}[s]||0),c:'var(--red)'},
+    {l:'Traffic stress',v:'-'+(v>15?10:v>8?5:0),c:'var(--blue)'},
+    {l:'Animal hazard',v:a?'-12':'0',c:'var(--green)'},
+  ].map(r=>`
+    <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:10px;padding:4px 8px;background:var(--s2);border-radius:2px">
+      <span style="color:var(--muted)">${r.l}</span>
+      <span style="color:${r.c};font-weight:700">${r.v}</span>
+    </div>`).join('');
+}
+
+function calcScore(potholes=0, severity='none', vehicles=0, animal=false, acc='none'){
+  let s=100;
+  s-=Math.min(potholes*7,40);
+  s-={none:0,low:5,medium:18,high:35}[severity]||0;
+  s-=vehicles>15?10:vehicles>8?5:0;
+  s-=animal?12:0;
+  s-={none:0,low:5,medium:15,high:25}[acc]||0;
+  s=Math.max(0,Math.min(100,s));
+  let g,c,col;
+  if(s>=85){g='A';c='Excellent';col='00e676'}
+  else if(s>=70){g='B';c='Good';col='7ecb20'}
+  else if(s>=55){g='C';c='Fair';col='ffb400'}
+  else if(s>=35){g='D';c='Poor';col='ff6b00'}
+  else{g='F';c='Critical';col='ff2d55'}
+  const acts={A:'No action',B:'Routine check in 30d',C:'Plan repair < 30d',D:'Repair within 7 days',F:'⚠️ CLOSE ROAD NOW'};
+  return {score:s,grade:g,condition:c,color:col,action:acts[g]};
+}
+
+function renderGauge(fillId, numId, gradeId, score, grade, color){
+  const circ=326.7;
+  const offset=circ-(circ*(score/100));
+  const fill=document.getElementById(fillId);
+  fill.style.stroke=color;
+  fill.style.strokeDashoffset=offset;
+  document.getElementById(numId).textContent=score;
+  document.getElementById(numId).style.color=color;
+  document.getElementById(gradeId).textContent='GRADE '+grade;
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// DEPTH ANALYSIS
+// ═══════════════════════════════════════════════════════════
+function renderDepths(depths){
+  const el=document.getElementById('depthList');
+  if(!depths.length){
+    el.innerHTML='<div style="text-align:center;padding:14px;font-family:var(--font-mono);font-size:11px;color:var(--muted)">No potholes detected</div>';
+    return;
+  }
+  const colors={'Shallow':'var(--green)','Moderate':'var(--amber)','Deep':'var(--orange)','Critical':'var(--red)'};
+  const widths={'Shallow':25,'Moderate':50,'Deep':75,'Critical':100};
+  el.innerHTML=depths.slice(0,6).map((d,i)=>{
+    const cat=d.depth||'Shallow';
+    const col=colors[cat]||'var(--amber)';
+    const w=widths[cat]||50;
+    return `<div class="depth-item">
+      <div class="depth-num">#${i+1}</div>
+      <div class="depth-bar-wrap"><div class="depth-bar" style="width:${w}%;background:${col}"></div></div>
+      <div class="depth-cat" style="color:${col}">${cat}</div>
+      <div class="depth-cm">${d.cm_range||'—'}</div>
+    </div>`;
+  }).join('');
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// CHARTS
+// ═══════════════════════════════════════════════════════════
+Chart.defaults.color='#2e5068';
+Chart.defaults.font.family="'JetBrains Mono'";
+
+let damageChart;
+
+function initCharts(){
+  const ctx1=document.getElementById('sevChart');
+  if(ctx1) sevChart=new Chart(ctx1,{
+    type:'doughnut',
+    data:{
+      labels:['High','Medium','Low','Clean'],
+      datasets:[{data:[0,0,0,1],backgroundColor:['#ff2d55','#ffb400','#00b4ff','#00e676'],borderWidth:0}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,cutout:'68%',
+      plugins:{legend:{position:'right',labels:{font:{size:9},padding:10,boxWidth:10}}}}
+  });
+
+  const ctx2=document.getElementById('sevChart2');
+  if(ctx2) sevChart2=new Chart(ctx2,{
+    type:'doughnut',
+    data:{
+      labels:['High','Medium','Low','Clean'],
+      datasets:[{data:[0,0,0,1],backgroundColor:['#ff2d55','#ffb400','#00b4ff','#00e676'],borderWidth:0}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+      plugins:{legend:{position:'right',labels:{font:{size:9},padding:10,boxWidth:10}}}}
+  });
+
+  // NEW — damage type bar chart
+  const ctx3=document.getElementById('damageChart');
+  if(ctx3) damageChart=new Chart(ctx3,{
+    type:'bar',
+    data:{
+      labels:['Potholes','Cracks','Patches','Rutting'],
+      datasets:[{
+        label:'Total detected',
+        data:[0,0,0,0],
+        backgroundColor:['rgba(255,180,0,.7)','rgba(255,107,0,.7)','rgba(0,180,255,.7)','rgba(255,45,85,.7)'],
+        borderColor:    ['#ffb400','#ff6b00','#00b4ff','#ff2d55'],
+        borderWidth:1,borderRadius:3,
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:'rgba(15,32,48,.8)'},ticks:{font:{size:10}}},
+        y:{grid:{color:'rgba(15,32,48,.8)'},beginAtZero:true,ticks:{font:{size:9},stepSize:1}}
+      }
+    }
+  });
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// DATA LOADING
+// ═══════════════════════════════════════════════════════════
+async function loadStats(){
+  try{
+    const d=await fetch('/api/stats').then(r=>r.json());
+    if(sevChart){
+      sevChart.data.datasets[0].data=[d.high||0,d.medium||0,d.low||0,d.clean_roads||1];
+      sevChart.update();
+    }
+    if(sevChart2){
+      sevChart2.data.datasets[0].data=[d.high||0,d.medium||0,d.low||0,d.clean_roads||1];
+      sevChart2.update();
+    }
+    const t=d.total||0;
+    setText('stat-total', t);
+    setText('stat-high',  d.high||0);
+    setText('stat-clean', d.clean_roads||0);
+    setText('stat-avg',   t ? Math.round(70-(((d.high||0)/t)*30)) : '—');
+
+    // NEW — damage type totals (from get_summary_stats() which now returns these)
+    setText('stat-potholes', d.total_potholes ?? '—');
+    setText('stat-cracks',   d.total_cracks   ?? '—');
+    setText('stat-patches',  d.total_patches  ?? '—');
+    setText('stat-rutting',  d.total_rutting  ?? '—');
+
+    // Update damage bar chart
+    if(damageChart){
+      damageChart.data.datasets[0].data=[
+        d.total_potholes||0, d.total_cracks||0,
+        d.total_patches||0,  d.total_rutting||0
+      ];
+      damageChart.update();
+    }
+  }catch{}
+}
+
+async function loadAnalytics(){
+  await loadStats();
+  try{
+    const rows=await fetch('/api/chart/daily').then(r=>r.json());
+    const ctx=document.getElementById('trendChart');
+    if(ctx){
+      if(trendChart) trendChart.destroy();
+      trendChart=new Chart(ctx,{
+        type:'line',
+        data:{
+          labels:rows.map(r=>r.date),
+          datasets:[{
+            label:'Detections',data:rows.map(r=>r.count),
+            borderColor:'var(--cyan)',backgroundColor:'rgba(0,229,255,.06)',
+            tension:.4,fill:true,pointRadius:4,pointBackgroundColor:'var(--cyan)',
+          }]
+        },
+        options:{responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{display:false}},
+          scales:{
+            x:{grid:{color:'rgba(15,32,48,.8)'},ticks:{font:{size:9}}},
+            y:{grid:{color:'rgba(15,32,48,.8)'},beginAtZero:true,ticks:{font:{size:9}}}
+          }
+        }
+      });
+    }
+  }catch{}
+}
+
+async function loadLog(){
+  const sev=document.getElementById('logFilter')?.value||'';
+  const url=sev?`/api/detections?severity=${sev}`:'/api/detections?limit=50';
+  try{
+    const rows=await fetch(url).then(r=>r.json());
+    document.getElementById('log-count').textContent=rows.length+' records';
+    const tbody=document.getElementById('logBody');
+    if(!rows.length){
+      tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted);font-family:var(--font-mono)">No detections yet</td></tr>';
+      return;
+    }
+    tbody.innerHTML=rows.map(r=>{
+      const ts      = new Date(r.timestamp).toLocaleString();
+      const risk    = r.overall_risk || r.severity || '—';
+      const rCol    = {'safe':'var(--green)','none':'var(--green)','low':'var(--blue)',
+                       'medium':'var(--amber)','high':'var(--orange)','critical':'var(--red)'}[risk]||'var(--muted)';
+      const dmg     = r.damage_counts || {};
+      const score   = r.road_score?.score ?? '—';
+      return `<tr>
+        <td style="color:var(--muted)">${ts}</td>
+        <td>${r.source||'—'}</td>
+        <td style="color:var(--amber);font-weight:700">${r.total_count??0}</td>
+        <td style="color:var(--amber)">${dmg.pothole??'—'}</td>
+        <td style="color:var(--orange)">${dmg.crack??'—'}</td>
+        <td style="color:var(--blue)">${dmg.patch??'—'}</td>
+        <td style="color:var(--blue)">${r.traffic?.vehicle_count??'—'}</td>
+        <td style="color:${rCol};font-weight:700">${risk.toUpperCase()}</td>
+        <td style="color:var(--amber)">${score}</td>
+      </tr>`;
+    }).join('');
+  }catch{}
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// ALERTS
+// ═══════════════════════════════════════════════════════════
+function showAlert(msg, level='info'){
+  const el=document.getElementById('alertFlash');
+  el.className=`alert-flash af-${level}`;
+  el.textContent=msg;
+  el.style.display='block';
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>el.style.display='none',4000);
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════
+function setText(id,val){const el=document.getElementById(id);if(el)el.textContent=val}
+function numberFmt(n){return n.toLocaleString('en-IN')}
+
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+initCharts();
+loadStats();
+updateCalc();
+setInterval(loadStats, 20000);
+</script>
+</body>
+</html>

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live Feed — RoadGuard AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Exo+2:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Variables ──────────────────────────────────────────── */
+:root {
+  --bg:      #03060a;
+  --s1:      #050b12;
+  --s2:      #070f18;
+  --card:    #091420;
+  --b1:      #0f2030;
+  --b2:      #173040;
+
+  --amber:   #ffb400;
+  --red:     #ff2d55;
+  --green:   #00e676;
+  --blue:    #00b4ff;
+  --cyan:    #00e5ff;
+
+  --text:    #b8d4e8;
+  --muted:   #2e5068;
+  --bright:  #e2f2ff;
+
+  --font-head: 'Orbitron', sans-serif;
+  --font-body: 'Exo 2', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* ── Reset ──────────────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text)}
+
+/* ── Layout ──────────────────────────────────────────────── */
+.shell{display:flex;flex-direction:column;height:100vh}
+
+/* ── Topbar ──────────────────────────────────────────────── */
+.topbar{
+  background:var(--s1);
+  border-bottom:1px solid var(--b1);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;
+  min-height: 56px;
+}
+.logo{display:flex;align-items:center;gap:12px;cursor:pointer}
+.logo-icon{
+  width:34px;height:34px;border-radius:6px;
+  background:linear-gradient(135deg,var(--amber),#ff6b00);
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;box-shadow:0 0 16px rgba(255,180,0,.4);
+}
+.logo-name{font-family:var(--font-head);font-size:15px;font-weight:700;
+  letter-spacing:2px;color:var(--bright)}
+.logo-name span{color:var(--amber)}
+
+.top-right{display:flex;align-items:center;gap:16px}
+.nav-btn{
+  font-family:var(--font-mono);font-size:11px;font-weight:600;
+  color:var(--cyan);text-decoration:none;
+  padding:6px 14px;border:1px solid var(--cyan);border-radius:3px;
+  background:rgba(0,229,255,.05);transition:all .2s;
+}
+.nav-btn:hover{background:rgba(0,229,255,.15)}
+
+/* ── Main content ────────────────────────────────────────── */
+.main{padding:20px;flex:1;display:flex;flex-direction:column;align-items:center;overflow-y:auto}
+
+.panel{
+  background:var(--card);border:1px solid var(--b1);border-radius:6px;
+  width:100%;max-width:800px;overflow:hidden;
+}
+.ph{padding:14px 20px;border-bottom:1px solid var(--b1);
+  display:flex;align-items:center;justify-content:space-between}
+.pt{font-family:var(--font-head);font-size:12px;letter-spacing:3px;
+  text-transform:uppercase;color:var(--bright);display:flex;align-items:center;gap:10px}
+.live-dot{width:10px;height:10px;border-radius:50%;background:var(--red);
+  box-shadow:0 0 10px var(--red);animation:blink 1.4s ease infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+.pb{padding:20px;display:flex;flex-direction:column;gap:16px;align-items:center}
+
+.video-container{
+  width:100%;aspect-ratio:16/9;background:var(--s1);border:1px solid var(--b2);
+  border-radius:4px;overflow:hidden;position:relative;
+  display:flex;align-items:center;justify-content:center;
+}
+.video-container img{width:100%;height:100%;object-fit:contain;display:none}
+.placeholder{
+  font-family:var(--font-mono);font-size:12px;color:var(--muted);
+  text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center;
+}
+.placeholder code{color:var(--cyan);background:rgba(0,229,255,.1);padding:2px 6px;border-radius:3px}
+
+.controls{display:flex;gap:12px;width:100%}
+.btn{
+  flex:1;padding:12px;border:none;border-radius:4px;
+  font-family:var(--font-head);font-size:11px;font-weight:700;
+  letter-spacing:2px;cursor:pointer;text-transform:uppercase;
+  transition:all .15s;
+}
+.btn-start{background:linear-gradient(135deg,var(--green) 0%,#00c9a7 100%);color:var(--bg)}
+.btn-start:hover{filter:brightness(1.1);transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,230,118,.3)}
+.btn-stop{background:linear-gradient(135deg,var(--red) 0%,#ff6b00 100%);color:var(--bright)}
+.btn-stop:hover{filter:brightness(1.1);transform:translateY(-1px);box-shadow:0 4px 20px rgba(255,45,85,.3)}
+.btn:disabled{background:var(--b1);color:var(--muted);cursor:not-allowed;transform:none;box-shadow:none}
+
+.status-msg{
+  font-family:var(--font-mono);font-size:11px;color:var(--amber);
+  margin-top:10px;background:rgba(255,180,0,.1);padding:6px 12px;
+  border:1px solid rgba(255,180,0,.3);border-radius:3px;display:none;
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <header class="topbar">
+    <div class="logo" onclick="window.location.href='/'">
+      <div class="logo-icon">🛡️</div>
+      <div>
+        <div class="logo-name">Road<span>Guard</span> AI</div>
+      </div>
+    </div>
+    <div class="top-right">
+      <a href="/" class="nav-btn">← BACK TO DASHBOARD</a>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="panel">
+      <div class="ph">
+        <div class="pt"><div class="live-dot" id="liveDot" style="display:none"></div> 📹 LIVE FEED DETECTION</div>
+      </div>
+      <div class="pb">
+        <div class="video-container" id="vidContainer">
+          <div class="placeholder" id="placeholder">
+            <span>Webcam is offline.</span>
+            <span>Click Start to begin YOLOv8 live stream.</span>
+            <span style="font-size:10px;margin-top:10px">Powered by OpenCV & Flask</span>
+          </div>
+          <img id="videoFeed" src="">
+        </div>
+
+        <div class="controls">
+          <button class="btn btn-start" id="startBtn" onclick="startWebcam()">▶ START WEBCAM</button>
+          <button class="btn btn-stop" id="stopBtn" onclick="stopWebcam()" disabled>⏹ STOP</button>
+        </div>
+        
+        <div class="status-msg" id="statusMsg"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+async function startWebcam() {
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('statusMsg').textContent = "Starting webcam...";
+  document.getElementById('statusMsg').style.display = "block";
+  
+  try {
+    const res = await fetch('/api/webcam/start', { method: 'POST' });
+    const data = await res.json();
+    
+    if (data.success || data.message === "Already running") {
+      document.getElementById('placeholder').style.display = 'none';
+      const feed = document.getElementById('videoFeed');
+      feed.style.display = 'block';
+      // Append timestamp to bust cache
+      feed.src = '/api/webcam/feed?t=' + new Date().getTime();
+      
+      document.getElementById('startBtn').disabled = true;
+      document.getElementById('stopBtn').disabled = false;
+      document.getElementById('liveDot').style.display = 'block';
+      document.getElementById('vidContainer').style.borderColor = 'var(--red)';
+      
+      document.getElementById('statusMsg').textContent = "Live detection running. Threats will be logged to database automatically.";
+      document.getElementById('statusMsg').style.color = "var(--green)";
+      document.getElementById('statusMsg').style.borderColor = "var(--green)";
+    } else {
+      throw new Error("Failed to start");
+    }
+  } catch(e) {
+    document.getElementById('statusMsg').textContent = "Cannot start webcam. Ensure no other app is using it.";
+    document.getElementById('statusMsg').style.color = "var(--red)";
+    document.getElementById('startBtn').disabled = false;
+  }
+}
+
+async function stopWebcam() {
+  document.getElementById('stopBtn').disabled = true;
+  document.getElementById('statusMsg').style.display = "none";
+  
+  try {
+    await fetch('/api/webcam/stop', { method: 'POST' });
+  } catch(e) {}
+  
+  document.getElementById('videoFeed').src = '';
+  document.getElementById('videoFeed').style.display = 'none';
+  document.getElementById('placeholder').style.display = 'flex';
+  
+  document.getElementById('startBtn').disabled = false;
+  document.getElementById('liveDot').style.display = 'none';
+  document.getElementById('vidContainer').style.borderColor = 'var(--b2)';
+}
+</script>
+</body>
+</html>

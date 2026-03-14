@@ -1,0 +1,8 @@
+ultralytics
+opencv-python
+pymongo
+flask
+pillow
+roboflow
+werkzeug
+python-dotenv

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Heatmap — RoadGuard AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Exo+2:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<style>
+/* ── Variables ──────────────────────────────────────────── */
+:root {
+  --bg:      #03060a;
+  --s1:      #050b12;
+  --s2:      #070f18;
+  --card:    #091420;
+  --b1:      #0f2030;
+  --b2:      #173040;
+
+  --amber:   #ffb400;
+  --red:     #ff2d55;
+  --green:   #00e676;
+  --blue:    #00b4ff;
+  --cyan:    #00e5ff;
+  --orange:  #ff6b00;
+
+  --text:    #b8d4e8;
+  --muted:   #2e5068;
+  --bright:  #e2f2ff;
+
+  --font-head: 'Orbitron', sans-serif;
+  --font-body: 'Exo 2', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* ── Reset ──────────────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text)}
+
+/* ── Layout ──────────────────────────────────────────────── */
+.shell{display:flex;flex-direction:column;height:100vh}
+
+/* ── Topbar ──────────────────────────────────────────────── */
+.topbar{
+  background:var(--s1);
+  border-bottom:1px solid var(--b1);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;
+  min-height:56px;
+  position:relative;overflow:hidden;
+}
+.topbar::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--cyan),var(--amber),var(--cyan),transparent);
+}
+.logo{display:flex;align-items:center;gap:12px;cursor:pointer}
+.logo-icon{
+  width:34px;height:34px;border-radius:6px;
+  background:linear-gradient(135deg,var(--amber),var(--orange));
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;box-shadow:0 0 16px rgba(255,180,0,.4);
+}
+.logo-name{font-family:var(--font-head);font-size:15px;font-weight:700;
+  letter-spacing:2px;color:var(--bright)}
+.logo-name span{color:var(--amber)}
+
+.top-center{display:flex;align-items:center;gap:16px}
+.stat-chip{
+  font-family:var(--font-mono);font-size:10px;
+  padding:4px 12px;border-radius:3px;letter-spacing:1px;
+  border:1px solid var(--b1);background:var(--s2);
+}
+.stat-chip .val{font-weight:700}
+
+.top-right{display:flex;align-items:center;gap:16px}
+.nav-btn{
+  font-family:var(--font-mono);font-size:11px;font-weight:600;
+  color:var(--cyan);text-decoration:none;
+  padding:6px 14px;border:1px solid var(--cyan);border-radius:3px;
+  background:rgba(0,229,255,.05);transition:all .2s;
+}
+.nav-btn:hover{background:rgba(0,229,255,.15)}
+
+/* ── Main content ────────────────────────────────────────── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+.map-header{
+  padding:10px 20px;display:flex;align-items:center;justify-content:space-between;
+  background:var(--s1);border-bottom:1px solid var(--b1);
+}
+.map-title{
+  font-family:var(--font-head);font-size:11px;letter-spacing:3px;
+  text-transform:uppercase;color:var(--bright);
+  display:flex;align-items:center;gap:10px;
+}
+.map-title::before{content:'';width:20px;height:1px;background:var(--cyan)}
+
+.legend{display:flex;gap:14px;align-items:center}
+.legend-item{display:flex;align-items:center;gap:5px;
+  font-family:var(--font-mono);font-size:10px;color:var(--muted)}
+.legend-dot{width:10px;height:10px;border-radius:50%}
+
+#map{flex:1;width:100%;background:var(--bg)}
+
+/* ── Info overlay ────────────────────────────────────────── */
+.info-overlay{
+  position:absolute;bottom:20px;left:20px;z-index:1000;
+  background:rgba(9,20,32,.92);border:1px solid var(--b1);
+  border-radius:6px;padding:14px 18px;
+  backdrop-filter:blur(10px);
+  max-width:280px;
+}
+.info-title{font-family:var(--font-head);font-size:10px;letter-spacing:2px;
+  color:var(--cyan);text-transform:uppercase;margin-bottom:8px}
+.info-row{display:flex;justify-content:space-between;
+  font-family:var(--font-mono);font-size:11px;padding:3px 0}
+.info-row .lbl{color:var(--muted)}
+.info-row .val{color:var(--text);font-weight:600}
+
+/* ── No-data message ─────────────────────────────────────── */
+.no-data{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  z-index:1000;text-align:center;display:none;
+}
+.no-data-icon{font-size:48px;margin-bottom:12px}
+.no-data-text{font-family:var(--font-head);font-size:13px;letter-spacing:2px;
+  color:var(--muted);margin-bottom:6px}
+.no-data-sub{font-family:var(--font-mono);font-size:11px;color:var(--muted);
+  line-height:1.6;max-width:320px}
+
+/* Leaflet dark overrides */
+.leaflet-control-zoom a{
+  background:var(--card)!important;color:var(--text)!important;
+  border-color:var(--b1)!important;
+}
+.leaflet-control-zoom a:hover{background:var(--s2)!important}
+.leaflet-control-attribution{
+  background:rgba(5,11,18,.8)!important;color:var(--muted)!important;
+  font-size:9px!important;
+}
+.leaflet-control-attribution a{color:var(--cyan)!important}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <header class="topbar">
+    <div class="logo" onclick="window.location.href='/'">
+      <div class="logo-icon">🛡️</div>
+      <div>
+        <div class="logo-name">Road<span>Guard</span> AI</div>
+      </div>
+    </div>
+
+    <div class="top-center">
+      <div class="stat-chip">📍 DETECTIONS: <span class="val" id="totalCount">—</span></div>
+      <div class="stat-chip" style="border-color:var(--red)">🔴 HIGH: <span class="val" style="color:var(--red)" id="highCount">—</span></div>
+    </div>
+
+    <div class="top-right">
+      <a href="/" class="nav-btn">← DASHBOARD</a>
+      <a href="/live" class="nav-btn" style="border-color:var(--green);color:var(--green)">📹 LIVE FEED</a>
+    </div>
+  </header>
+
+  <main class="main" style="position:relative">
+    <div class="map-header">
+      <div class="map-title">🗺️ Detection Heatmap</div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Low</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div> Medium</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> High</div>
+      </div>
+    </div>
+
+    <div id="map"></div>
+
+    <!-- Info overlay -->
+    <div class="info-overlay" id="infoOverlay">
+      <div class="info-title">📊 Summary</div>
+      <div class="info-row"><span class="lbl">Total Points</span><span class="val" id="infoTotal">0</span></div>
+      <div class="info-row"><span class="lbl">High Severity</span><span class="val" style="color:var(--red)" id="infoHigh">0</span></div>
+      <div class="info-row"><span class="lbl">Medium</span><span class="val" style="color:var(--amber)" id="infoMed">0</span></div>
+      <div class="info-row"><span class="lbl">Low</span><span class="val" style="color:var(--green)" id="infoLow">0</span></div>
+    </div>
+
+    <!-- No data message -->
+    <div class="no-data" id="noData">
+      <div class="no-data-icon">🗺️</div>
+      <div class="no-data-text">No Location Data Yet</div>
+      <div class="no-data-sub">
+        Upload images with GPS coordinates or run scans with location data to populate the heatmap.
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ── Initialize dark-themed Leaflet map ──────────────────────
+const map = L.map('map', {
+  center: [20.5937, 78.9629],   // India center
+  zoom: 5,
+  zoomControl: true,
+});
+
+// Dark tile layer
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+  subdomains: 'abcd',
+  maxZoom: 19,
+}).addTo(map);
+
+// Severity color helper
+function sevColor(sev) {
+  if (sev === 'high')   return '#ff2d55';
+  if (sev === 'medium') return '#ffb400';
+  return '#00e676';
+}
+
+function sevWeight(sev) {
+  if (sev === 'high')   return 1.0;
+  if (sev === 'medium') return 0.6;
+  return 0.3;
+}
+
+// ── Fetch detections and render ─────────────────────────────
+async function loadDetections() {
+  try {
+    const res  = await fetch('/api/detections?limit=500');
+    const data = await res.json();
+
+    const withLocation = data.filter(d =>
+      d.location && d.location.lat && d.location.lng
+    );
+
+    document.getElementById('totalCount').textContent = data.length;
+
+    const highCount = data.filter(d => d.severity === 'high').length;
+    document.getElementById('highCount').textContent = highCount;
+
+    if (withLocation.length === 0) {
+      document.getElementById('noData').style.display = 'block';
+      document.getElementById('infoOverlay').style.display = 'none';
+      return;
+    }
+
+    // Stats
+    let hc = 0, mc = 0, lc = 0;
+    const heatPoints = [];
+    const markers = [];
+
+    withLocation.forEach(d => {
+      const lat = parseFloat(d.location.lat);
+      const lng = parseFloat(d.location.lng);
+      const sev = d.severity || 'low';
+
+      if (sev === 'high')   hc++;
+      else if (sev === 'medium') mc++;
+      else lc++;
+
+      heatPoints.push([lat, lng, sevWeight(sev)]);
+
+      // Circle marker
+      const marker = L.circleMarker([lat, lng], {
+        radius: sev === 'high' ? 8 : sev === 'medium' ? 6 : 4,
+        color: sevColor(sev),
+        fillColor: sevColor(sev),
+        fillOpacity: 0.7,
+        weight: 1,
+      }).addTo(map);
+
+      const time = d.timestamp ? new Date(d.timestamp).toLocaleString() : 'N/A';
+      const summary = d.damage_summary || `${d.total_count || 0} detection(s)`;
+      marker.bindPopup(`
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;min-width:180px">
+          <div style="font-weight:700;margin-bottom:6px;color:${sevColor(sev)}">
+            ● ${sev.toUpperCase()} SEVERITY
+          </div>
+          <div style="margin-bottom:3px">📋 ${summary}</div>
+          <div style="margin-bottom:3px">📍 ${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
+          <div style="color:#888">🕐 ${time}</div>
+        </div>
+      `);
+
+      markers.push(marker);
+    });
+
+    // Heat layer
+    if (heatPoints.length > 0) {
+      L.heatLayer(heatPoints, {
+        radius: 30,
+        blur: 20,
+        maxZoom: 15,
+        gradient: {0.2: '#00e676', 0.5: '#ffb400', 0.8: '#ff6b00', 1.0: '#ff2d55'},
+      }).addTo(map);
+
+      // Fit bounds
+      const group = L.featureGroup(markers);
+      map.fitBounds(group.getBounds().pad(0.2));
+    }
+
+    // Update info overlay
+    document.getElementById('infoTotal').textContent = withLocation.length;
+    document.getElementById('infoHigh').textContent  = hc;
+    document.getElementById('infoMed').textContent   = mc;
+    document.getElementById('infoLow').textContent   = lc;
+
+  } catch (e) {
+    console.error('Failed to load detections:', e);
+    document.getElementById('noData').style.display = 'block';
+    document.getElementById('infoOverlay').style.display = 'none';
+  }
+}
+
+loadDetections();
+</script>
+</body>
+</html>
