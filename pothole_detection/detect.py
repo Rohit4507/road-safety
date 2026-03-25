@@ -19,7 +19,7 @@ UPLOADS_DIR        = "uploads"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
-# Load model once at startup
+# Load model once at startup 
 print(f"🔄 Loading model: {DAMAGE_MODEL_PATH}")
 model = YOLO(DAMAGE_MODEL_PATH)
 print(f"✅ Model loaded! Classes: {list(model.names.values())}")

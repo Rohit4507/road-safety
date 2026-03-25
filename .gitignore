@@ -36,3 +36,6 @@ bus.jpg
 
 # Gemini agent files
 .gemini/
+
+*.zip
+echo *.zip >> .gitignore

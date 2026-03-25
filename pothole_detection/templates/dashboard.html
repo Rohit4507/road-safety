@@ -401,12 +401,73 @@ body::after{
   .threat-strip{grid-template-columns:repeat(2,1fr)}
   .row-3-1,.row-3,.row-2,.row-4{grid-template-columns:1fr}
 }
+/* ── ALERT SIREN BANNER ─────────────────────────────────────── */
+.siren-banner{
+  display:none;position:fixed;top:56px;left:0;right:0;z-index:8500;
+  padding:14px 24px;font-family:var(--font-mono);font-size:12px;
+  letter-spacing:1px;color:#fff;
+  background:linear-gradient(90deg,#ff2d55,#ff6b00,#ff2d55);
+  background-size:200% 100%;
+  animation:siren-slide 1s linear infinite;
+  box-shadow:0 4px 30px rgba(255,45,85,.5);
+  display:none;align-items:center;gap:14px;
+}
+.siren-banner.show{display:flex;animation:siren-slide 1s linear infinite, siren-pulse .5s ease infinite alternate}
+@keyframes siren-slide{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+@keyframes siren-pulse{from{opacity:.92}to{opacity:1}}
+.siren-banner .siren-icon{font-size:22px;animation:siren-rotate .3s ease infinite alternate}
+@keyframes siren-rotate{from{transform:rotate(-8deg)}to{transform:rotate(8deg)}}
+.siren-banner .siren-msg{flex:1;font-weight:700}
+.siren-banner .siren-time{font-size:10px;opacity:.8}
+.siren-banner .siren-close{
+  background:rgba(255,255,255,.2);border:none;color:#fff;
+  width:28px;height:28px;border-radius:50%;cursor:pointer;
+  font-size:16px;display:flex;align-items:center;justify-content:center;
+  transition:background .15s;
+}
+.siren-banner .siren-close:hover{background:rgba(255,255,255,.4)}
+
+/* Full-screen flash overlay */
+.screen-flash{
+  display:none;position:fixed;inset:0;z-index:8400;
+  pointer-events:none;
+  background:radial-gradient(ellipse at center,rgba(255,45,85,.15) 0%,transparent 70%);
+  animation:flash-fade 1.5s ease forwards;
+}
+.screen-flash.show{display:block}
+@keyframes flash-fade{0%{opacity:1}100%{opacity:0}}
+
+/* Notification permission button */
+.notif-btn{
+  display:flex;align-items:center;gap:5px;
+  background:rgba(255,180,0,.1);border:1px solid rgba(255,180,0,.25);
+  color:var(--amber);padding:4px 10px;border-radius:3px;
+  font-family:var(--font-mono);font-size:10px;cursor:pointer;
+  letter-spacing:1px;transition:all .15s;
+}
+.notif-btn:hover{background:rgba(255,180,0,.2);border-color:rgba(255,180,0,.5)}
+.notif-btn.granted{background:rgba(0,230,118,.08);border-color:rgba(0,230,118,.25);color:var(--green);cursor:default}
+
+@media(max-width:800px){
+  .siren-banner{top:56px;font-size:11px;padding:10px 14px}
+}
 </style>
 </head>
 <body>
 
 <!-- Alert flash -->
 <div class="alert-flash" id="alertFlash"></div>
+
+<!-- Siren banner -->
+<div class="siren-banner" id="sirenBanner">
+  <span class="siren-icon">🚨</span>
+  <span class="siren-msg" id="sirenMsg">ALERT</span>
+  <span class="siren-time" id="sirenTime"></span>
+  <button class="siren-close" onclick="dismissSiren()">&times;</button>
+</div>
+
+<!-- Full-screen flash -->
+<div class="screen-flash" id="screenFlash"></div>
 
 <div class="shell">
 
@@ -425,6 +486,9 @@ body::after{
   </div>
 
   <div class="top-right">
+    <button class="notif-btn" id="notifBtn" onclick="requestNotifPerm()">
+      🔔 Enable Alerts
+    </button>
     <div class="live-dot"><div class="ldot"></div>LIVE</div>
     <div class="clock" id="clock">--:--:--</div>
   </div>
@@ -461,6 +525,7 @@ body::after{
     <div class="sb-label">Features</div>
     <div class="nav-item" onclick="window.location.href='/heatmap'">🗺️ <span>Heatmap</span></div>
     <div class="nav-item" onclick="window.location.href='/live'">📹 <span>Live Feed</span></div>
+    <div class="nav-item" onclick="window.location.href='/sos'">🚨 <span>SOS</span></div>
   </div>
   <div class="sb-foot">
     <div style="color:var(--muted);margin-bottom:3px">RoadGuard AI</div>
@@ -1556,6 +1621,123 @@ function numberFmt(n){return n.toLocaleString('en-IN')}
 // ═══════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// REAL-TIME ALERT SYSTEM (SSE + Sound + Notifications)
+// ═══════════════════════════════════════════════════════════
+
+// ── Web Audio siren beeps ─────────────────────────────────
+let _audioCtx = null;
+function playAlarmBeeps(count = 3) {
+  try {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _audioCtx;
+    const now = ctx.currentTime;
+    for (let i = 0; i < count; i++) {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(880, now + i * 0.35);
+      osc.frequency.setValueAtTime(660, now + i * 0.35 + 0.12);
+      gain.gain.setValueAtTime(0.25, now + i * 0.35);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.35 + 0.28);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now + i * 0.35);
+      osc.stop(now + i * 0.35 + 0.3);
+    }
+  } catch(e) { console.warn('Audio alert failed:', e); }
+}
+
+// ── Browser Notification ──────────────────────────────────
+function requestNotifPerm() {
+  if (!('Notification' in window)) return;
+  Notification.requestPermission().then(perm => {
+    updateNotifBtn(perm);
+  });
+}
+
+function updateNotifBtn(perm) {
+  const btn = document.getElementById('notifBtn');
+  if (perm === 'granted') {
+    btn.className = 'notif-btn granted';
+    btn.innerHTML = '✅ Alerts ON';
+  } else if (perm === 'denied') {
+    btn.className = 'notif-btn';
+    btn.innerHTML = '🔕 Blocked';
+    btn.style.opacity = '0.5';
+  }
+}
+
+function showBrowserNotification(data) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const n = new Notification('🚨 RoadGuard AI Alert', {
+    body: data.message || 'High severity threat detected!',
+    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🛡️</text></svg>',
+    tag: 'roadguard-alert',
+    requireInteraction: true,
+  });
+  n.onclick = () => { window.focus(); n.close(); };
+  setTimeout(() => n.close(), 10000);
+}
+
+// ── Siren banner ──────────────────────────────────────────
+function showSirenBanner(data) {
+  const banner = document.getElementById('sirenBanner');
+  document.getElementById('sirenMsg').textContent = data.message || 'THREAT DETECTED';
+  document.getElementById('sirenTime').textContent = data.time || new Date().toLocaleTimeString();
+  banner.classList.add('show');
+  // Screen flash
+  const flash = document.getElementById('screenFlash');
+  flash.classList.remove('show');
+  void flash.offsetWidth; // force reflow
+  flash.classList.add('show');
+  setTimeout(() => flash.classList.remove('show'), 1500);
+  // Auto dismiss after 8s
+  clearTimeout(banner._t);
+  banner._t = setTimeout(dismissSiren, 8000);
+}
+
+function dismissSiren() {
+  document.getElementById('sirenBanner').classList.remove('show');
+}
+
+// ── Full alert trigger ────────────────────────────────────
+function triggerBrowserAlert(data) {
+  // 1. Siren banner
+  showSirenBanner(data);
+  // 2. Alarm sound
+  playAlarmBeeps(data.severity === 'high' ? 3 : 2);
+  // 3. Browser notification
+  showBrowserNotification(data);
+  // 4. Update ticker
+  document.getElementById('tickerText').textContent = '🚨 ' + (data.message || 'ALERT DETECTED');
+}
+
+// ── SSE Connection ────────────────────────────────────────
+let _evtSource = null;
+function connectAlertSSE() {
+  if (_evtSource) { try { _evtSource.close(); } catch(e){} }
+  _evtSource = new EventSource('/api/alerts/stream');
+  _evtSource.onmessage = function(e) {
+    try {
+      const data = JSON.parse(e.data);
+      triggerBrowserAlert(data);
+    } catch(err) { console.warn('SSE parse error:', err); }
+  };
+  _evtSource.onerror = function() {
+    // Auto-reconnect after 5s
+    _evtSource.close();
+    setTimeout(connectAlertSSE, 5000);
+  };
+}
+
+// ── Init notifications ────────────────────────────────────
+if ('Notification' in window && Notification.permission === 'granted') {
+  updateNotifBtn('granted');
+} else if ('Notification' in window && Notification.permission === 'denied') {
+  updateNotifBtn('denied');
+}
+connectAlertSSE();
+
 initCharts();
 loadStats();
 updateCalc();

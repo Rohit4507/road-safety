@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SOS — RoadGuard AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#03060a;--card:#091420;--b1:#0f2030;--red:#ff2d55;--amber:#ffb400;--cyan:#00e5ff;--muted:#2e5068;--text:#b8d4e8;
+      --green:#00e676;--blue:#00b4ff;
+      --font-head:'Orbitron',sans-serif;--font-mono:'JetBrains Mono',monospace;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:var(--font-mono);height:100vh;overflow:hidden}
+    .wrap{max-width:900px;margin:0 auto;padding:20px;display:flex;flex-direction:column;gap:14px;height:100vh}
+    header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:var(--card);border:1px solid var(--b1);border-radius:10px}
+    header .title{font-family:var(--font-head);letter-spacing:2px}
+    a{color:var(--cyan);text-decoration:none}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:1;align-items:start}
+    .panel{background:rgba(9,20,32,.85);border:1px solid var(--b1);border-radius:10px;padding:16px}
+    .panel h2{font-size:12px;color:var(--amber);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
+    .row{display:flex;gap:10px;align-items:center;margin-top:10px}
+    label{font-size:11px;color:var(--muted);min-width:110px}
+    input{width:100%;padding:10px;border-radius:6px;border:1px solid var(--b1);background:#07101a;color:var(--text);font-family:inherit}
+    .btn{padding:12px 14px;border-radius:8px;border:1px solid rgba(255,45,85,.4);background:rgba(255,45,85,.08);color:var(--red);font-family:var(--font-head);font-weight:800;letter-spacing:2px;cursor:pointer}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .btn2{padding:10px 12px;border-radius:8px;border:1px solid rgba(0,229,255,.35);background:rgba(0,229,255,.06);color:var(--cyan);cursor:pointer}
+    .status{background:rgba(0,229,255,.06);border:1px solid rgba(0,229,255,.2);padding:10px;border-radius:8px;display:none}
+    .status.show{display:block}
+    .log{max-height:240px;overflow:auto;background:rgba(7,16,26,.6);border:1px solid var(--b1);border-radius:10px;padding:10px}
+    .log .line{font-size:11px;margin:6px 0;color:var(--muted)}
+    .log .line strong{color:var(--text)}
+    @media(max-width:800px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="title">RoadGuard AI — SOS</div>
+      <div><a href="/">← Dashboard</a></div>
+    </header>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>Your contact profile</h2>
+        <div class="row">
+          <label>My phone</label>
+          <input id="myPhone" placeholder="+91XXXXXXXXXX">
+        </div>
+        <div class="row">
+          <label>Family phones</label>
+          <input id="familyNumbers" placeholder="+91..., +91...">
+        </div>
+        <div class="row" style="justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <button class="btn2" onclick="saveProfile()">Save Profile</button>
+          <button class="btn" onclick="triggerSOS()" id="sosBtn">TRIGGER SOS</button>
+        </div>
+        <div class="status" id="statusBox"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Live area alert feed</h2>
+        <div class="log" id="logBox"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  function setStatus(msg, ok=true){
+    const el=document.getElementById('statusBox');
+    el.textContent=msg;
+    el.style.borderColor= ok ? 'rgba(0,230,118,.35)' : 'rgba(255,45,85,.4)';
+    el.style.background= ok ? 'rgba(0,230,118,.06)' : 'rgba(255,45,85,.06)';
+    el.classList.add('show');
+  }
+
+  function logLine(msg){
+    const box=document.getElementById('logBox');
+    const div=document.createElement('div');
+    div.className='line';
+    div.innerHTML = msg;
+    box.prepend(div);
+  }
+
+  // Local user id for targeted SSE.
+  const userId = localStorage.getItem('roadguard_user_id') || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+  localStorage.setItem('roadguard_user_id', userId);
+
+  document.getElementById('myPhone').value = localStorage.getItem('roadguard_my_phone') || '';
+  document.getElementById('familyNumbers').value = localStorage.getItem('roadguard_family_numbers') || '';
+
+  async function getGeo(){
+    return new Promise((resolve, reject)=>{
+      if(!navigator.geolocation) return reject(new Error('Geolocation not supported'));
+      navigator.geolocation.getCurrentPosition(
+        pos => resolve({lat: pos.coords.latitude, lng: pos.coords.longitude}),
+        err => reject(err),
+        {enableHighAccuracy:true, maximumAge: 5000, timeout: 10000}
+      );
+    });
+  }
+
+  async function saveProfile(){
+    const myPhone = (document.getElementById('myPhone').value || '').trim();
+    const famRaw   = (document.getElementById('familyNumbers').value || '').trim();
+    localStorage.setItem('roadguard_my_phone', myPhone);
+    localStorage.setItem('roadguard_family_numbers', famRaw);
+    setStatus('Profile saved locally.', true);
+
+    // Optionally publish GPS immediately if we can.
+    try{
+      const geo = await getGeo();
+      const family_numbers = famRaw ? famRaw.split(',').map(s=>s.trim()).filter(Boolean) : [];
+      await fetch('/api/gps/update', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({user_id: userId, lat: geo.lat, lng: geo.lng, phone_number: myPhone, family_numbers})
+      });
+      setStatus('GPS + contact profile updated.', true);
+    }catch(e){
+      setStatus('Could not publish GPS yet: '+e.message, false);
+    }
+  }
+
+  async function publishGpsTick(){
+    const myPhone = (localStorage.getItem('roadguard_my_phone') || '').trim();
+    if(!myPhone) return;
+    const famRaw = (localStorage.getItem('roadguard_family_numbers') || '').trim();
+    const family_numbers = famRaw ? famRaw.split(',').map(s=>s.trim()).filter(Boolean) : [];
+    const geo = await getGeo();
+    await fetch('/api/gps/update', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({user_id: userId, lat: geo.lat, lng: geo.lng, phone_number: myPhone, family_numbers})
+    });
+  }
+
+  document.getElementById('sosBtn').addEventListener('click', ()=>triggerSOS());
+
+  async function triggerSOS(){
+    document.getElementById('sosBtn').disabled = true;
+    const famRaw = (localStorage.getItem('roadguard_family_numbers') || '').trim();
+    const family_numbers = famRaw ? famRaw.split(',').map(s=>s.trim()).filter(Boolean) : [];
+    setStatus('Fetching location...', true);
+    try{
+      const geo = await getGeo();
+      // Ensure contacts are also registered for nearby users targeting.
+      const myPhone = (localStorage.getItem('roadguard_my_phone') || '').trim();
+      if(myPhone){
+        await fetch('/api/gps/update', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({user_id: userId, lat: geo.lat, lng: geo.lng, phone_number: myPhone, family_numbers})
+        });
+      }
+
+      setStatus('Dispatching emergency...', true);
+      const response = await fetch('/api/sos/trigger', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          user_id: userId,
+          lat: geo.lat,
+          lng: geo.lng,
+          emergency_type: 'accident',
+          severity: 'high',
+          family_numbers
+        })
+      });
+
+      const raw = await response.text();
+      let res = null;
+      try{
+        res = raw ? JSON.parse(raw) : null;
+      }catch(_err){
+        res = null;
+      }
+
+      if(!response.ok){
+        const detail = (res && res.error) ? res.error : (raw || ('HTTP '+response.status));
+        throw new Error(detail);
+      }
+
+      if(res && res.success){
+        setStatus('SOS triggered! Emergency id: '+res.emergency_id, true);
+        logLine('🚨 SOS triggered <strong>'+res.emergency_id+'</strong>');
+      }else{
+        setStatus('SOS failed: '+(res.error||'unknown error'), false);
+      }
+    }catch(e){
+      setStatus('SOS failed: '+e.message, false);
+    }finally{
+      document.getElementById('sosBtn').disabled = false;
+    }
+  }
+
+  // Nearby emergency alerts via SSE (targeted by `user_id`).
+  let es = null;
+  function connect(){
+    if(es){ try{es.close();}catch(e){} }
+    es = new EventSource('/api/alerts/stream?user_id='+encodeURIComponent(userId));
+    es.onmessage = function(ev){
+      try{
+        const data = JSON.parse(ev.data);
+        const cat = data.category || 'road';
+        const msg = data.message || 'Alert';
+        logLine((cat==='emergency' ? '💥' : '⚡')+' '+msg);
+      }catch(e){}
+    };
+    es.onerror = function(){
+      try{es.close();}catch(e){}
+      setTimeout(connect, 5000);
+    };
+  }
+  connect();
+
+  // Periodically publish GPS for nearby targeting.
+  setInterval(()=>publishGpsTick().catch(()=>{}), 12000);
+</script>
+</body>
+</html>

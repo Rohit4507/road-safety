@@ -3,7 +3,8 @@
 # ============================================================
 
 from pymongo import MongoClient
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Any
 import base64
 import cv2
 import os
@@ -22,6 +23,22 @@ client         = MongoClient(MONGO_URI)
 db             = client[DB_NAME]
 detections_col = db["detections"]
 stats_col      = db["stats"]
+
+# ── Emergency / GPS collections ────────────────────────────────
+user_profiles_col  = db["user_profiles"]
+user_locations_col = db["user_locations"]
+emergencies_col    = db["emergencies"]
+voice_calls_col    = db["voice_calls"]
+
+# Geospatial index for 2dsphere queries (radius in meters).
+try:
+    user_locations_col.create_index([("loc", "2dsphere")])
+    user_locations_col.create_index([("updated_at", -1)])
+    user_profiles_col.create_index([("user_id", 1)], unique=True)
+except Exception:
+    # Index creation can fail on misconfigured Mongo or offline environments;
+    # queries will still work if indexes already exist.
+    pass
 
 
 # ---------------------------------------------------------------
@@ -211,6 +228,237 @@ def delete_all() -> int:
     result = detections_col.delete_many({})
     print(f"🗑️  Deleted {result.deleted_count} records")
     return result.deleted_count
+
+
+# ---------------------------------------------------------------
+# 🚨 Emergency & GPS persistence
+# ---------------------------------------------------------------
+
+def upsert_user_profile(
+    user_id: str,
+    phone_number: str | None = None,
+    family_numbers: list[str] | None = None,
+):
+    """Store/refresh user contact details for voice/SMS dispatch."""
+    if not user_id:
+        return
+    update: dict = {"updated_at": datetime.utcnow()}
+    if phone_number:
+        update["phone_number"] = phone_number
+    if family_numbers is not None:
+        update["family_numbers"] = family_numbers
+
+    user_profiles_col.update_one({"user_id": user_id}, {"$set": update}, upsert=True)
+
+
+def upsert_user_location(
+    user_id: str,
+    lat: float,
+    lng: float,
+    metadata: dict | None = None,
+):
+    if not user_id:
+        return
+    user_locations_col.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                "user_id": user_id,
+                "loc": {"type": "Point", "coordinates": [float(lng), float(lat)]},
+                "lat": float(lat),
+                "lng": float(lng),
+                "updated_at": datetime.utcnow(),
+                "metadata": metadata or {},
+            }
+        },
+        upsert=True,
+    )
+
+
+def get_latest_user_location(max_age_seconds: int = 180) -> dict | None:
+    """Return the most recently updated location for any user."""
+    cutoff = datetime.utcnow() - timedelta(seconds=max_age_seconds)
+    doc = user_locations_col.find_one(
+        {"updated_at": {"$gte": cutoff}},
+        sort=[("updated_at", -1)],
+        projection={"_id": 0, "user_id": 1, "lat": 1, "lng": 1, "updated_at": 1},
+    )
+    return doc
+
+
+def get_nearby_users(
+    *,
+    lat: float,
+    lng: float,
+    radius_m: int = 1000,
+    within_seconds: int = 900,
+    limit: int = 50,
+) -> list[dict]:
+    """
+    Returns user targets (phone numbers) within `radius_m` of the point.
+    Uses 2dsphere index on `user_locations.loc` when available.
+    """
+    cutoff = datetime.utcnow() - timedelta(seconds=within_seconds)
+
+    # Join with profiles in-app for minimal DB work.
+    loc_query = {
+        "updated_at": {"$gte": cutoff},
+        "loc": {
+            "$nearSphere": {
+                "$geometry": {"type": "Point", "coordinates": [float(lng), float(lat)]},
+                "$maxDistance": float(radius_m),
+            }
+        },
+    }
+
+    cursor = (
+        user_locations_col.find(
+            loc_query,
+            projection={"_id": 0, "user_id": 1, "lat": 1, "lng": 1, "updated_at": 1},
+        )
+        .limit(limit)
+    )
+
+    users = []
+    user_ids = []
+    locs = list(cursor)
+    user_ids = [d.get("user_id") for d in locs if d.get("user_id")]
+
+    if not user_ids:
+        return []
+
+    profiles = {
+        p["user_id"]: p
+        for p in user_profiles_col.find(
+            {"user_id": {"$in": user_ids}},
+            projection={"_id": 0, "user_id": 1, "phone_number": 1, "family_numbers": 1},
+        )
+    }
+
+    for loc in locs:
+        uid = loc.get("user_id")
+        profile = profiles.get(uid, {})
+        users.append(
+            {
+                "user_id": uid,
+                "lat": loc.get("lat"),
+                "lng": loc.get("lng"),
+                "updated_at": loc.get("updated_at"),
+                "phone_number": profile.get("phone_number"),
+                "family_numbers": profile.get("family_numbers") or [],
+            }
+        )
+
+    return users
+
+
+def create_emergency_event(
+    *,
+    emergency_type: str,
+    severity: str,
+    location: dict[str, Any],
+    triggered_by_user_id: str | None,
+    metadata: dict[str, Any] | None = None,
+    route_suggestion: dict[str, Any] | None = None,
+) -> str:
+    doc = {
+        "timestamp": datetime.utcnow(),
+        "type": emergency_type,
+        "severity": severity,
+        "location": location or {},
+        "triggered_by_user_id": triggered_by_user_id,
+        "metadata": metadata or {},
+        "route_suggestion": route_suggestion or {},
+        "status": "active",
+    }
+    res = emergencies_col.insert_one(doc)
+    return str(res.inserted_id)
+
+
+def get_recent_emergencies(max_age_seconds: int = 1800, limit: int = 50) -> list[dict]:
+    """Returns recent active emergency events for route suggestion."""
+    cutoff = datetime.utcnow() - timedelta(seconds=max_age_seconds)
+    cursor = (
+        emergencies_col.find(
+            {"timestamp": {"$gte": cutoff}, "status": "active"},
+            projection={"_id": 1, "type": 1, "severity": 1, "location": 1, "timestamp": 1},
+        )
+        .sort("timestamp", -1)
+        .limit(limit)
+    )
+    out = []
+    for d in cursor:
+        d["_id"] = str(d.get("_id"))
+        out.append(d)
+    return out
+
+
+def create_voice_call_attempt(
+    *,
+    emergency_id: str | None,
+    to_number: str,
+    attempt_number: int,
+    status: str,
+    error: str | None,
+    provider_call_sid: str | None,
+    metadata: dict | None = None,
+) -> str:
+    doc = {
+        "created_at": datetime.utcnow(),
+        "emergency_id": emergency_id,
+        "to_number": to_number,
+        "attempt_number": int(attempt_number),
+        "status": status,
+        "error": error,
+        "provider_call_sid": provider_call_sid,
+        "message": (metadata or {}).get("message"),
+        "metadata": metadata or {},
+    }
+    res = voice_calls_col.insert_one(doc)
+    return str(res.inserted_id)
+
+
+def get_voice_call_attempt(vcid: str) -> dict | None:
+    if not vcid:
+        return None
+    try:
+        from bson import ObjectId
+
+        doc = voice_calls_col.find_one(
+            {"_id": ObjectId(vcid)},
+            projection={"_id": 0},
+        )
+        return doc
+    except Exception:
+        return None
+
+
+def set_voice_call_status(
+    vcid: str,
+    *,
+    status: str,
+    provider_call_sid: str | None,
+    error: str | None,
+    raw: dict | None = None,
+) -> None:
+    if not vcid:
+        return
+    try:
+        from bson import ObjectId
+
+        update: dict[str, Any] = {
+            "$set": {
+                "status": status,
+                "provider_call_sid": provider_call_sid,
+                "error": error,
+            }
+        }
+        if raw is not None:
+            update["$set"]["raw"] = raw
+        user = voice_calls_col.update_one({"_id": ObjectId(vcid)}, update)
+        return
+    except Exception:
+        return
 
 
 # ---------------------------------------------------------------

@@ -6,10 +6,34 @@
 #   - Sound alert (beep on high severity)
 #   - SMS via Twilio (optional, needs API key)
 #   - Webhook / Slack notification (optional)
+#   - Browser push (SSE to dashboard — always on)
 # ================================================================
 
-import os, json, requests
+import os, json, requests, queue, threading
 from datetime import datetime
+
+# ── Browser alert queue (thread-safe) ─────────────────────────
+# Multiple SSE clients can each get their own copy of every alert.
+_alert_subscribers = []       # list of {"q": queue.Queue, "user_id": str|None}
+_subscribers_lock  = threading.Lock()
+
+def subscribe_alerts(user_id: str | None = None):
+    """Register a new SSE client. Returns a Queue to read from.
+
+    If `user_id` is provided, some alert categories can be targeted to that user.
+    """
+    q = queue.Queue(maxsize=50)
+    with _subscribers_lock:
+        _alert_subscribers.append({"q": q, "user_id": user_id})
+    return q
+
+def unsubscribe_alerts(q):
+    """Remove an SSE client queue."""
+    with _subscribers_lock:
+        try: _alert_subscribers.remove(q)
+        except Exception:
+            # Backward compatibility: older callers used `q` lists directly.
+            _alert_subscribers[:] = [s for s in _alert_subscribers if s.get("q") is not q]
 
 # ── Config — fill in to enable optional alerts ────────────────
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_SID",   "")   # optional
@@ -113,6 +137,45 @@ def slack_alert(severity: str, count: int, location: dict = {}):
         print(f"⚠️  Slack alert failed: {e}")
 
 
+# ── Browser alert (push to SSE clients) ───────────────────────
+
+def browser_alert(
+    severity: str,
+    count: int,
+    location: dict = {},
+    message: str | None = None,
+    category: str = "road",
+    target_user_ids: list[str] | None = None,
+    extra: dict | None = None,
+):
+    """Push an alert dict into connected SSE clients.
+
+    - If `target_user_ids` is provided, alerts are delivered only to subscribers whose
+      `user_id` is in the target list. Subscribers with `user_id=None` receive all alerts.
+    """
+    payload = {
+        "severity": severity,
+        "count": count,
+        "location": location,
+        "time": datetime.now().strftime("%H:%M:%S"),
+        "category": category,
+        "message": message or f"🚨 {severity.upper()} ALERT — {count} threat(s) detected",
+    }
+    if extra:
+        payload.update(extra)
+    data_str = json.dumps(payload)
+    with _subscribers_lock:
+        for sub in list(_alert_subscribers):
+            q = sub.get("q")
+            user_id = sub.get("user_id")
+            if target_user_ids and user_id is not None and user_id not in target_user_ids:
+                continue
+            try:
+                q.put_nowait(data_str)
+            except queue.Full:
+                pass   # drop if client is too slow
+
+
 # ── Main dispatch ─────────────────────────────────────────────
 
 def send_alert(severity: str, count: int, location: dict = {}):
@@ -127,6 +190,7 @@ def send_alert(severity: str, count: int, location: dict = {}):
     sound_alert(severity)
     sms_alert(severity, count, location)
     slack_alert(severity, count, location)
+    browser_alert(severity, count, location)
 
 
 # ── Test ──────────────────────────────────────────────────────

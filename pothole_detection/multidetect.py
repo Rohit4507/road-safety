@@ -172,6 +172,9 @@ def detect_accident(vehicles: list, persons: list, frame_shape: tuple) -> dict:
     accident_score = 0
     reasons = []
 
+    def point_in_box(px: float, py: float, box: list) -> bool:
+        return box[0] <= px <= box[2] and box[1] <= py <= box[3]
+
     for i, v1 in enumerate(vehicles):
         for v2 in vehicles[i+1:]:
             iou = compute_iou(v1["box"], v2["box"])
@@ -188,9 +191,17 @@ def detect_accident(vehicles: list, persons: list, frame_shape: tuple) -> dict:
             v_cx = (vx1 + vx2) / 2
             v_cy = (vy1 + vy2) / 2
             dist = ((p_cx - v_cx)**2 + (p_cy - v_cy)**2) ** 0.5
+            if point_in_box(p_cx, p_cy, vehicle["box"]):
+                accident_score += 50
+                reasons.append("Person appears within vehicle bounding box")
             if dist < 80:
                 accident_score += 30
                 reasons.append("Person very close to vehicle")
+
+    # Additional boost when we see both multiple vehicles and persons.
+    if len(vehicles) >= 2 and len(persons) >= 1:
+        accident_score += 20
+        reasons.append("Multi-vehicle + person presence pattern")
 
     if accident_score >= 70:   likelihood = "high"
     elif accident_score >= 40: likelihood = "medium"
@@ -325,12 +336,15 @@ def analyse_frame(image_path: str, location: dict = {}) -> dict:
     # Also store full multi-threat report separately for the log tab
     detections_col.insert_one({**report, "timestamp": datetime.utcnow(), "type": "multi_threat"})
 
-    # Fire alerts
+    # Fire legacy "road damage" alerts only.
+    # Accident / congestion notifications are handled by the dedicated emergency pipeline.
     for threat in threats:
+        if threat != "pothole":
+            continue
         send_alert(
-            severity = "high",
-            count    = damage_info["total_count"] if threat == "pothole" else 1,
-            location = location
+            severity="high",
+            count=damage_info["total_count"],
+            location=location,
         )
 
     # Console summary

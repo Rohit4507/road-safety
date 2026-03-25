@@ -11,7 +11,7 @@ from detect         import detect_image, detect_video, model, parse_results, RES
 from database       import (save_detection, get_all_detections, get_by_severity,
                              get_summary_stats, get_damage_breakdown, detections_col)
 from multidetect    import analyse_frame
-from alerts         import send_alert
+from alerts         import send_alert, subscribe_alerts, unsubscribe_alerts
 
 # Optional — load if available
 try:
@@ -50,6 +50,10 @@ webcam_active = False
 latest_frame  = None
 frame_lock    = threading.Lock()
 
+# Prevent repeated accident SOS triggers from the webcam loop.
+_last_accident_emergency_ts = 0.0
+_ACCIDENT_EMERGENCY_COOLDOWN_SEC = int(os.getenv("ACCIDENT_EMERGENCY_COOLDOWN_SEC", "300"))
+
 def allowed_img(f): return "." in f and f.rsplit(".",1)[1].lower() in ALLOWED_IMAGE
 def allowed_vid(f): return "." in f and f.rsplit(".",1)[1].lower() in ALLOWED_VIDEO
 
@@ -70,6 +74,10 @@ def live_page():
 @app.route("/heatmap")
 def heatmap_page():
     return render_template("heatmap.html")
+
+@app.route("/sos")
+def sos_page():
+    return render_template("sos.html")
 
 
 # ── Image detection ───────────────────────────────────────────────
@@ -212,6 +220,24 @@ def api_multithreat():
                 "weather_risk": wx,
             })
 
+        # Accident likelihood -> emergency dispatch (police/hospital/family/nearby + voice)
+        try:
+            acc = report.get("accident") or {}
+            if acc.get("alert_needed") and location and "lat" in location and "lng" in location:
+                from emergency_system import trigger_emergency
+                trigger_emergency(
+                    emergency_type="accident",
+                    severity=acc.get("accident_likelihood", "high"),
+                    location=location,
+                    triggered_by_user_id=None,
+                    metadata={"source": "camera_based_multithreat_scan"},
+                    family_numbers=[],
+                    voice_call=True,
+                )
+        except Exception:
+            # Never fail the scan endpoint because emergency provider isn't configured.
+            pass
+
         return jsonify(report)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -325,6 +351,43 @@ def webcam_worker(camera_id=0, save_interval=30):
             temp = f"uploads/webcam_{frame_num}.jpg"
             cv2.imwrite(temp, frame)
             detect_image(temp)
+
+            # Best-effort camera-based accident checks using the existing
+            # multi-threat traffic model (separate from pothole annotations).
+            global _last_accident_emergency_ts
+            if (datetime.utcnow().timestamp() - _last_accident_emergency_ts) > _ACCIDENT_EMERGENCY_COOLDOWN_SEC:
+                try:
+                    from gps_service import get_latest_location
+                    from emergency_system import trigger_emergency
+                    from multidetect import (
+                        traffic_model,
+                        parse_boxes,
+                        detect_accident,
+                        VEHICLE_CLASSES,
+                        PERSON_CLASS,
+                    )
+
+                    # Run traffic model on the saved frame.
+                    traffic_res = traffic_model(temp, verbose=False)[0]
+                    vehicles = parse_boxes(traffic_res, VEHICLE_CLASSES)
+                    persons  = parse_boxes(traffic_res, PERSON_CLASS)
+                    acc = detect_accident(vehicles, persons, cv2.imread(temp).shape)
+
+                    if acc.get("alert_needed"):
+                        latest = get_latest_location(max_age_seconds=180)
+                        if latest:
+                            _last_accident_emergency_ts = datetime.utcnow().timestamp()
+                            trigger_emergency(
+                                emergency_type="accident",
+                                severity=acc.get("accident_likelihood", "high"),
+                                location={"lat": latest["lat"], "lng": latest["lng"]},
+                                triggered_by_user_id=None,
+                                metadata={"source": "webcam_based_accident_check"},
+                                family_numbers=[],
+                                voice_call=True,
+                            )
+                except Exception:
+                    pass   # fail-safe: never break webcam loop
     cap.release()
     webcam_active = False
 
@@ -350,6 +413,184 @@ def stop_webcam():
 @app.route("/api/webcam/feed")
 def webcam_feed():
     return Response(gen_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
+# ── SSE: Real-time alert stream ────────────────────────────────
+def _sse_stream(user_id=None):
+    q = subscribe_alerts(user_id=user_id)
+    try:
+        # send a heartbeat comment every 15 s to keep connection alive
+        import queue as _q
+        while True:
+            try:
+                data = q.get(timeout=15)
+                yield f"data: {data}\n\n"
+            except _q.Empty:
+                yield ": heartbeat\n\n"
+    except GeneratorExit:
+        pass
+    finally:
+        unsubscribe_alerts(q)
+
+@app.route("/api/alerts/stream")
+def alert_stream():
+    user_id = request.args.get("user_id")
+    return Response(_sse_stream(user_id=user_id), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache",
+                             "X-Accel-Buffering": "no"})
+
+
+# ── GPS + SOS + Voice APIs ────────────────────────────────────
+
+@app.route("/api/gps/update", methods=["POST"])
+def api_gps_update():
+    """
+    Client sends live GPS + optional contacts:
+      - user_id, lat, lng (required)
+      - phone_number (optional)
+      - family_numbers (optional; list or comma-separated string)
+    """
+    from gps_service import upsert_from_payload
+
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.form.to_dict(flat=True)
+
+    fam = data.get("family_numbers")
+    if isinstance(fam, str):
+        data["family_numbers"] = [x.strip() for x in fam.split(",") if x.strip()]
+
+    try:
+        return jsonify(upsert_from_payload(data))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/sos/trigger", methods=["POST"])
+def api_sos_trigger():
+    """
+    SOS emergency trigger endpoint.
+    Required: lat, lng
+    Optional: user_id, emergency_type, severity, family_numbers
+    """
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.form.to_dict(flat=True)
+
+    fam = data.get("family_numbers")
+    if isinstance(fam, str):
+        data["family_numbers"] = [x.strip() for x in fam.split(",") if x.strip()]
+
+    lat = data.get("lat")
+    lng = data.get("lng")
+    if lat is None or lng is None:
+        return jsonify({"error": "lat and lng are required"}), 400
+
+    try:
+        from emergency_system import trigger_emergency
+        return jsonify(
+            trigger_emergency(
+                emergency_type=(data.get("emergency_type") or "accident").strip().lower(),
+                severity=(data.get("severity") or "high").strip().lower(),
+                location={"lat": float(lat), "lng": float(lng)},
+                triggered_by_user_id=(data.get("user_id") or None),
+                metadata={"source": "sos_endpoint"},
+                family_numbers=data.get("family_numbers") or [],
+                voice_call=True,
+            )
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/voice/twiml", methods=["GET"])
+def api_voice_twiml():
+    """TwiML endpoint for Twilio `<Say>` messages."""
+    from voice_service import get_twiml_xml
+
+    msg = request.args.get("msg") or ""
+    xml = get_twiml_xml(msg)
+    return Response(xml, mimetype="text/xml")
+
+
+@app.route("/api/voice/status", methods=["POST", "GET"])
+def api_voice_status():
+    """Twilio status callback for retry/fail-safe logic."""
+    from voice_service import handle_voice_status_callback
+
+    vcid = request.args.get("vcid") or request.form.get("vcid") or request.values.get("vcid")
+    call_status = (
+        request.form.get("CallStatus")
+        or request.args.get("CallStatus")
+        or request.values.get("CallStatus")
+    )
+    provider_call_sid = request.form.get("CallSid") or request.args.get("CallSid") or request.values.get("CallSid")
+
+    raw = request.form.to_dict(flat=True) if request.form else {}
+    handle_voice_status_callback(
+        vcid=vcid,
+        call_status=call_status,
+        provider_call_sid=provider_call_sid,
+        raw=raw,
+    )
+    return jsonify({"success": True})
+
+
+@app.route("/api/route/suggest", methods=["GET"])
+def api_route_suggest():
+    """Best-effort route suggestion based on emergency context."""
+    from emergency_system import _route_suggestion
+    from gps_service import get_latest_location
+    from database import get_recent_emergencies
+
+    lat = request.args.get("lat")
+    lng = request.args.get("lng")
+    location = {}
+    if lat is not None and lng is not None:
+        location = {"lat": float(lat), "lng": float(lng)}
+    else:
+        location = get_latest_location(max_age_seconds=180)
+
+    if not location:
+        return jsonify({"success": False, "error": "No location available"}), 400
+
+    def haversine_km(lat1, lon1, lat2, lon2) -> float:
+        # Small helper for approximate distance (no external routing APIs).
+        import math
+        r = 6371.0
+        p1 = math.radians(lat1)
+        p2 = math.radians(lat2)
+        dphi = math.radians(lat2 - lat1)
+        dl = math.radians(lon2 - lon1)
+        a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+        return 2 * r * math.asin(math.sqrt(a))
+
+    nearest = None
+    nearest_km = None
+    for e in get_recent_emergencies(max_age_seconds=900, limit=40):
+        loc = e.get("location") or {}
+        elat = loc.get("lat")
+        elng = loc.get("lng")
+        if elat is None or elng is None:
+            continue
+        km = haversine_km(float(location["lat"]), float(location["lng"]), float(elat), float(elng))
+        if km > 1.0:
+            continue
+        if nearest_km is None or km < nearest_km:
+            nearest_km = km
+            nearest = e
+
+    if nearest:
+        return jsonify(
+            {
+                "success": True,
+                "route_suggestion": _route_suggestion(nearest.get("type", "accident"), nearest.get("severity", "high")),
+            }
+        )
+
+    return jsonify({"success": True, "route_suggestion": _route_suggestion("accident", "high")})
 
 
 # ── Static files ──────────────────────────────────────────────────

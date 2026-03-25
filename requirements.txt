@@ -6,3 +6,5 @@ pillow
 roboflow
 werkzeug
 python-dotenv
+twilio
+requests
