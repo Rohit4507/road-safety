@@ -277,26 +277,26 @@ def upsert_user_location(
 
 def get_latest_user_location(max_age_seconds: int = 180) -> dict | None:
     """Return the most recently updated location for any user."""
-    freshness_cutoff = datetime.utcnow() - timedelta(seconds=max_age_seconds)
-    latest_location_doc = user_locations_col.find_one(
-        {"updated_at": {"$gte": freshness_cutoff}},
+    cutoff = datetime.utcnow() - timedelta(seconds=max_age_seconds)
+    doc = user_locations_col.find_one(
+        {"updated_at": {"$gte": cutoff}},
         sort=[("updated_at", -1)],
         projection={"_id": 0, "user_id": 1, "lat": 1, "lng": 1, "updated_at": 1},
     )
-    return latest_location_doc
+    return doc
 
 
 def get_latest_user_location_for_user(user_id: str, max_age_seconds: int = 180) -> dict | None:
     """Return latest location for a specific user within freshness window."""
     if not user_id:
         return None
-    freshness_cutoff = datetime.utcnow() - timedelta(seconds=max_age_seconds)
-    latest_location_doc = user_locations_col.find_one(
-        {"user_id": user_id, "updated_at": {"$gte": freshness_cutoff}},
+    cutoff = datetime.utcnow() - timedelta(seconds=max_age_seconds)
+    doc = user_locations_col.find_one(
+        {"user_id": user_id, "updated_at": {"$gte": cutoff}},
         sort=[("updated_at", -1)],
         projection={"_id": 0, "user_id": 1, "lat": 1, "lng": 1, "updated_at": 1},
     )
-    return latest_location_doc
+    return doc
 
 
 def get_nearby_users(
@@ -311,11 +311,11 @@ def get_nearby_users(
     Returns user targets (phone numbers) within `radius_m` of the point.
     Uses 2dsphere index on `user_locations.loc` when available.
     """
-    freshness_cutoff = datetime.utcnow() - timedelta(seconds=within_seconds)
+    cutoff = datetime.utcnow() - timedelta(seconds=within_seconds)
 
     # Join with profiles in-app for minimal DB work.
-    location_query = {
-        "updated_at": {"$gte": freshness_cutoff},
+    loc_query = {
+        "updated_at": {"$gte": cutoff},
         "loc": {
             "$nearSphere": {
                 "$geometry": {"type": "Point", "coordinates": [float(lng), float(lat)]},
@@ -324,45 +324,45 @@ def get_nearby_users(
         },
     }
 
-    nearby_locations_cursor = (
+    cursor = (
         user_locations_col.find(
-            location_query,
+            loc_query,
             projection={"_id": 0, "user_id": 1, "lat": 1, "lng": 1, "updated_at": 1},
         )
         .limit(limit)
     )
 
-    nearby_users = []
-    nearby_user_ids = []
-    nearby_location_rows = list(nearby_locations_cursor)
-    nearby_user_ids = [row.get("user_id") for row in nearby_location_rows if row.get("user_id")]
+    users = []
+    user_ids = []
+    locs = list(cursor)
+    user_ids = [d.get("user_id") for d in locs if d.get("user_id")]
 
-    if not nearby_user_ids:
+    if not user_ids:
         return []
 
-    profile_by_user_id = {
-        profile["user_id"]: profile
-        for profile in user_profiles_col.find(
-            {"user_id": {"$in": nearby_user_ids}},
+    profiles = {
+        p["user_id"]: p
+        for p in user_profiles_col.find(
+            {"user_id": {"$in": user_ids}},
             projection={"_id": 0, "user_id": 1, "phone_number": 1, "family_numbers": 1},
         )
     }
 
-    for location_row in nearby_location_rows:
-        current_user_id = location_row.get("user_id")
-        user_profile = profile_by_user_id.get(current_user_id, {})
-        nearby_users.append(
+    for loc in locs:
+        uid = loc.get("user_id")
+        profile = profiles.get(uid, {})
+        users.append(
             {
-                "user_id": current_user_id,
-                "lat": location_row.get("lat"),
-                "lng": location_row.get("lng"),
-                "updated_at": location_row.get("updated_at"),
-                "phone_number": user_profile.get("phone_number"),
-                "family_numbers": user_profile.get("family_numbers") or [],
+                "user_id": uid,
+                "lat": loc.get("lat"),
+                "lng": loc.get("lng"),
+                "updated_at": loc.get("updated_at"),
+                "phone_number": profile.get("phone_number"),
+                "family_numbers": profile.get("family_numbers") or [],
             }
         )
 
-    return nearby_users
+    return users
 
 
 def create_emergency_event(

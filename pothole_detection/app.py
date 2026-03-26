@@ -453,16 +453,16 @@ def api_gps_update():
     from gps_service import upsert_from_payload
 
     if request.is_json:
-        payload = request.get_json(silent=True) or {}
+        data = request.get_json(silent=True) or {}
     else:
-        payload = request.form.to_dict(flat=True)
+        data = request.form.to_dict(flat=True)
 
-    family_numbers_raw = payload.get("family_numbers")
-    if isinstance(family_numbers_raw, str):
-        payload["family_numbers"] = [x.strip() for x in family_numbers_raw.split(",") if x.strip()]
+    fam = data.get("family_numbers")
+    if isinstance(fam, str):
+        data["family_numbers"] = [x.strip() for x in fam.split(",") if x.strip()]
 
     try:
-        return jsonify(upsert_from_payload(payload))
+        return jsonify(upsert_from_payload(data))
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
@@ -477,27 +477,27 @@ def api_gps_latest(user_id=None):
     """
     from database import get_latest_user_location_for_user
 
-    requested_user_id = (user_id or request.args.get("user_id") or "").strip()
-    if not requested_user_id:
+    uid = (user_id or request.args.get("user_id") or "").strip()
+    if not uid:
         return jsonify({"success": False, "error": "user_id is required"}), 400
 
-    max_age_seconds_raw = (request.args.get("max_age_seconds") or "180").strip()
+    max_age_raw = (request.args.get("max_age_seconds") or "180").strip()
     try:
-        max_age_seconds = int(max_age_seconds_raw)
+        max_age = int(max_age_raw)
     except ValueError:
         return jsonify({"success": False, "error": "max_age_seconds must be an integer"}), 400
 
-    latest_location = get_latest_user_location_for_user(requested_user_id, max_age_seconds=max_age_seconds)
-    if not latest_location:
+    loc = get_latest_user_location_for_user(uid, max_age_seconds=max_age)
+    if not loc:
         return jsonify({"success": False, "error": "No recent location for this user"}), 404
 
     return jsonify(
         {
             "success": True,
-            "user_id": latest_location.get("user_id"),
-            "lat": latest_location.get("lat"),
-            "lng": latest_location.get("lng"),
-            "updated_at": latest_location.get("updated_at"),
+            "user_id": loc.get("user_id"),
+            "lat": loc.get("lat"),
+            "lng": loc.get("lng"),
+            "updated_at": loc.get("updated_at"),
         }
     )
 
@@ -511,32 +511,32 @@ def api_sos_trigger():
     notify_mode: call | sms | both | none
     """
     if request.is_json:
-        payload = request.get_json(silent=True) or {}
+        data = request.get_json(silent=True) or {}
     else:
-        payload = request.form.to_dict(flat=True)
+        data = request.form.to_dict(flat=True)
 
-    family_numbers_raw = payload.get("family_numbers")
-    if isinstance(family_numbers_raw, str):
-        payload["family_numbers"] = [x.strip() for x in family_numbers_raw.split(",") if x.strip()]
+    fam = data.get("family_numbers")
+    if isinstance(fam, str):
+        data["family_numbers"] = [x.strip() for x in fam.split(",") if x.strip()]
 
-    latitude_raw = payload.get("lat")
-    longitude_raw = payload.get("lng")
-    if latitude_raw is None or longitude_raw is None:
+    lat = data.get("lat")
+    lng = data.get("lng")
+    if lat is None or lng is None:
         return jsonify({"error": "lat and lng are required"}), 400
 
     try:
         from emergency_system import trigger_emergency
-        notify_mode = (payload.get("notify_mode") or "both").strip().lower()
+        notify_mode = (data.get("notify_mode") or "both").strip().lower()
         voice_call = notify_mode in ("call", "both")
         sms_alert = notify_mode in ("sms", "both")
         return jsonify(
             trigger_emergency(
-                emergency_type=(payload.get("emergency_type") or "accident").strip().lower(),
-                severity=(payload.get("severity") or "high").strip().lower(),
-                location={"lat": float(latitude_raw), "lng": float(longitude_raw)},
-                triggered_by_user_id=(payload.get("user_id") or None),
+                emergency_type=(data.get("emergency_type") or "accident").strip().lower(),
+                severity=(data.get("severity") or "high").strip().lower(),
+                location={"lat": float(lat), "lng": float(lng)},
+                triggered_by_user_id=(data.get("user_id") or None),
                 metadata={"source": "sos_endpoint"},
-                family_numbers=payload.get("family_numbers") or [],
+                family_numbers=data.get("family_numbers") or [],
                 voice_call=voice_call,
                 sms_alert=sms_alert,
             )
