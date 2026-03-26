@@ -19,20 +19,20 @@ TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM", "").strip()
 
 
 def _severity_to_voice_text(severity: str, emergency_type: str) -> str:
-    sev = (severity or "high").upper()
-    et  = (emergency_type or "EMERGENCY").upper()
+    severity_label = (severity or "high").upper()
+    emergency_label = (emergency_type or "EMERGENCY").upper()
     # Keep message short to reduce call time and truncation.
-    return f"{et} detected with {sev} severity near your location. Please move to safety, slow down, and call emergency services if needed."
+    return f"{emergency_label} detected with {severity_label} severity near your location. Please move to safety, slow down, and call emergency services if needed."
 
 
 def _severity_to_sms_text(severity: str, emergency_type: str, location: dict[str, Any], emergency_id: str) -> str:
-    sev = (severity or "high").upper()
-    et = (emergency_type or "EMERGENCY").upper()
-    lat = location.get("lat")
-    lng = location.get("lng")
+    severity_label = (severity or "high").upper()
+    emergency_label = (emergency_type or "EMERGENCY").upper()
+    latitude = location.get("lat")
+    longitude = location.get("lng")
     return (
-        f"RoadGuard SOS: {et} ({sev}). "
-        f"Location: {lat}, {lng}. "
+        f"RoadGuard SOS: {emergency_label} ({severity_label}). "
+        f"Location: {latitude}, {longitude}. "
         f"Emergency ID: {emergency_id}. "
         "Please respond urgently."
     )
@@ -48,23 +48,23 @@ def _send_sms(to_number: str, message: str) -> None:
     try:
         from twilio.rest import Client
 
-        twilio = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        twilio.messages.create(to=to_number, from_=TWILIO_FROM_NUMBER, body=message)
+        twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        twilio_client.messages.create(to=to_number, from_=TWILIO_FROM_NUMBER, body=message)
     except Exception:
         # Best-effort SMS path: keep emergency pipeline non-blocking.
         pass
 
 
 def _route_suggestion(emergency_type: str, severity: str) -> dict[str, Any]:
-    sev = (severity or "high").lower()
+    severity_level = (severity or "high").lower()
     if emergency_type == "accident":
-        if sev in ("high", "critical"):
+        if severity_level in ("high", "critical"):
             return {
                 "headline": "Avoid the affected road segment",
                 "details": "Use an alternate route if possible. Expect delays and follow diversion guidance.",
                 "eta_minutes_range": [10, 20],
             }
-        if sev == "medium":
+        if severity_level == "medium":
             return {
                 "headline": "Drive with caution",
                 "details": "Slow down and maintain safe distance until you pass the risk area.",
@@ -96,29 +96,29 @@ def trigger_emergency(
       - dispatch alerts (SSE) + voice calls with retry
       - include route suggestion in the response
     """
-    lat = location.get("lat")
-    lng = location.get("lng")
-    if lat is None or lng is None:
+    latitude = location.get("lat")
+    longitude = location.get("lng")
+    if latitude is None or longitude is None:
         raise ValueError("location.lat and location.lng are required for emergency radius logic")
 
     emergency_id = create_emergency_event(
         emergency_type=emergency_type,
         severity=severity,
-        location={"lat": float(lat), "lng": float(lng)},
+        location={"lat": float(latitude), "lng": float(longitude)},
         triggered_by_user_id=triggered_by_user_id,
         metadata=metadata or {},
         route_suggestion=_route_suggestion(emergency_type, severity),
     )
 
     # Determine nearby user targets (phone numbers + user_id).
-    nearby_targets = get_targets_nearby(float(lat), float(lng), radius_m=EMERGENCY_RADIUS_M)
-    nearby_user_ids = [t.get("user_id") for t in nearby_targets if t.get("user_id")]
-    nearby_numbers = [t.get("phone_number") for t in nearby_targets if t.get("phone_number")]
+    nearby_targets = get_targets_nearby(float(latitude), float(longitude), radius_m=EMERGENCY_RADIUS_M)
+    nearby_user_ids = [target.get("user_id") for target in nearby_targets if target.get("user_id")]
+    nearby_numbers = [target.get("phone_number") for target in nearby_targets if target.get("phone_number")]
     nearby_family_numbers = []
-    for t in nearby_targets:
-        for n in (t.get("family_numbers") or []):
-            if n and n not in nearby_family_numbers:
-                nearby_family_numbers.append(n)
+    for target in nearby_targets:
+        for phone_number in (target.get("family_numbers") or []):
+            if phone_number and phone_number not in nearby_family_numbers:
+                nearby_family_numbers.append(phone_number)
 
     police_numbers = [POLICE_TO_NUMBER] if POLICE_TO_NUMBER else []
     hospital_numbers = [HOSPITAL_TO_NUMBER] if HOSPITAL_TO_NUMBER else []
@@ -126,15 +126,15 @@ def trigger_emergency(
 
     # De-duplicate
     target_numbers: list[str] = []
-    for n in police_numbers + hospital_numbers + family_numbers + nearby_numbers:
-        if n and n not in target_numbers:
-            target_numbers.append(n)
+    for phone_number in police_numbers + hospital_numbers + family_numbers + nearby_numbers:
+        if phone_number and phone_number not in target_numbers:
+            target_numbers.append(phone_number)
 
     voice_text = _severity_to_voice_text(severity=severity, emergency_type=emergency_type)
     sms_text = _severity_to_sms_text(
         severity=severity,
         emergency_type=emergency_type,
-        location={"lat": float(lat), "lng": float(lng)},
+        location={"lat": float(latitude), "lng": float(longitude)},
         emergency_id=emergency_id,
     )
 
@@ -142,7 +142,7 @@ def trigger_emergency(
     browser_alert(
         severity="high",
         count=1,
-        location={"lat": float(lat), "lng": float(lng)},
+        location={"lat": float(latitude), "lng": float(longitude)},
         message=f"🚨 EMERGENCY: {emergency_type} ({severity}) near you",
         category="emergency",
         target_user_ids=nearby_user_ids,
@@ -152,10 +152,10 @@ def trigger_emergency(
     # 2) Place voice calls in background
     if voice_call and target_numbers:
         def _call_all():
-            for number in target_numbers:
+            for destination_number in target_numbers:
                 initiate_voice_call(
                     emergency_id=emergency_id,
-                    to_number=number,
+                    to_number=destination_number,
                     message=voice_text,
                     attempt_number=1,
                     metadata={"emergency_type": emergency_type, "severity": severity},
@@ -166,8 +166,8 @@ def trigger_emergency(
     # 3) Send SMS alerts in background (best-effort)
     if sms_alert and target_numbers:
         def _sms_all():
-            for number in target_numbers:
-                _send_sms(number, sms_text)
+            for destination_number in target_numbers:
+                _send_sms(destination_number, sms_text)
 
         threading.Thread(target=_sms_all, daemon=True).start()
 
