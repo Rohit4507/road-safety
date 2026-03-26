@@ -1,116 +1,170 @@
-# RoadGuard AI - Road Safety Intelligence Platform
+<!--
+README structure intentionally mirrors a production portfolio.
+Keep screenshots in /assets and update image paths as needed.
+-->
 
-RoadGuard AI is an end-to-end Flask + YOLOv8 platform for:
+## [Hero Section]
 
-- Road damage detection (`pothole`, `crack`, `patch`, `rutting`)
-- Multi-threat analysis (damage, traffic density, animals, accident risk)
-- Live webcam monitoring with alert streaming
-- GPS-based SOS dispatch (nearby users, police/hospital contacts)
-- Emergency notifications via voice call and SMS (Twilio)
-- Dashboard + heatmap + live feed UI
+# RoadGuard AI – Road Safety Intelligence Platform
 
----
+**AI-powered road damage + hazard intelligence** built with **Flask** and **YOLOv8** to detect infrastructure issues (potholes, cracks, rutting, patches), evaluate multi-threat risk (traffic, animals, accidents), and trigger **GPS-based SOS dispatch** with **real-time alerts**.
 
-## Features
-
-- Real-time and batch inference
-  - Image upload detection
-  - Video frame-sampled detection
-  - Webcam live feed with annotated frames
-- Geo-aware workflows
-  - Save user live GPS (`/api/gps/update`)
-  - Fetch latest location by user (`/api/gps/latest`)
-  - SOS trigger with radius-based nearby targeting
-- Emergency dispatch pipeline
-  - Browser SSE emergency alerts
-  - Voice calls with retry logic
-  - SMS dispatch (best-effort) via Twilio
-- Analytics
-  - Severity stats
-  - Damage breakdown
-  - Daily chart API
-  - Heatmap view from stored geolocations
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-API%20Server-000000?logo=flask&logoColor=white)
+![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-111827)
+![OpenCV](https://img.shields.io/badge/OpenCV-Computer%20Vision-5C3EE8?logo=opencv&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-Geospatial%20Data-47A248?logo=mongodb&logoColor=white)
+![SSE](https://img.shields.io/badge/Realtime-SSE%20Alerts-0EA5E9)
+![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-success)
 
 ---
 
-## Tech Stack
+## [Why This Project Matters]
 
-- Backend: Flask, PyMongo
-- AI/CV: Ultralytics YOLOv8, OpenCV, Pillow
-- Data: MongoDB (Atlas/local)
-- Alerts: Twilio (voice + SMS), Slack webhook, SSE
-- Frontend: HTML templates (dashboard/live/heatmap/sos)
+Road defects and sudden hazards are not just “bad infrastructure” problems—they’re **preventable safety failures**.
+
+- **Infrastructure risk**: undetected road damage increases accidents, vehicle damage, and maintenance costs.
+- **Operational visibility**: cities and fleets need **where/when** damage occurs, not just raw detections.
+- **Emergency response**: in high-risk events, seconds matter—**GPS + SOS dispatch** and **real-time alert streaming** improves response coordination.
+
+RoadGuard AI is designed to look and feel like a production-grade platform: detection → analytics → geospatial visualization → live monitoring → emergency workflow.
 
 ---
 
-## Project Structure
+## [Core Features]
+
+### Road Damage Detection (YOLOv8)
+
+- Detects **potholes, cracks, rutting, patches**
+- Supports:
+  - **Image inference** (REST upload)
+  - **Video inference** (uploaded file)
+  - **Live webcam monitoring** with annotated frames
+- Stores detections with metadata (time, severity, damage breakdown)
+
+### Multi‑Threat Road Intelligence
+
+- Multi-factor report per frame:
+  - **Road damage severity**
+  - **Traffic density**
+  - **Animal presence**
+  - **Accident likelihood**
+- Optional enrichment (when available):
+  - **Road score**
+  - **Repair cost estimate**
+  - **Pothole depth approximation**
+  - **Weather / low-light risk signals**
+
+### Real‑Time Monitoring & Alerts
+
+- **Server-Sent Events (SSE)** stream for alert delivery
+- Heartbeat-enabled stream for stable connections
+- Integrates alert sending logic via `alerts.py`
+
+### SOS Emergency System (GPS + Twilio)
+
+- **Live GPS updates** per user
+- **SOS trigger** endpoint with configurable notify mode:
+  - voice call
+  - SMS
+  - both
+  - none
+- MongoDB-backed geospatial targeting using **2dsphere** queries for nearby users (when enabled)
+
+### Analytics & Visualization
+
+- Dashboard endpoints for:
+  - aggregate stats
+  - damage type breakdown
+  - daily trend chart
+- Heatmap view powered by stored detection geolocations
+
+---
+
+## [Tech Stack]
+
+- **Backend**: Flask, Werkzeug
+- **AI / CV**: Ultralytics YOLOv8, OpenCV, Pillow
+- **Database**: MongoDB (local or Atlas), PyMongo, geospatial indexing (`2dsphere`)
+- **Realtime**: Server-Sent Events (SSE)
+- **Alerts / Comms**: Twilio (Voice + SMS), Slack webhook (optional), Requests
+- **DevOps**: Docker, Docker Compose
+
+---
+
+## [Project Structure]
 
 ```text
 road-safety/
   pothole_detection/
-    app.py
-    detect.py
-    multidetect.py
-    gps_service.py
-    emergency_system.py
-    voice_service.py
-    database.py
-    alerts.py
+    app.py                  # Flask app + API routes + SSE + webcam feed
+    detect.py                # YOLOv8 road damage inference + persistence
+    multidetect.py           # Multi-threat analysis (traffic/animals/accident)
+    road_intelligence.py     # Scoring + cost + depth + weather risk helpers
+    database.py              # MongoDB + geospatial indexes + emergency persistence
+    alerts.py                # Alert publish/subscribe + sending integrations
+    gps_service.py           # GPS update helpers + latest-location logic
+    emergency_system.py      # SOS dispatch + routing suggestions
+    voice_service.py         # Twilio TwiML + voice status callbacks
+    seed_data.py             # Optional seed utilities
     templates/
+      dashboard.html
+      heatmap.html
+      live.html
+      sos.html
+      index.html
   requirements.txt
   Dockerfile
   docker-compose.yml
+  LICENSE
+  README.md
+  assets/
+    dashboard.png
+    live-detection.gif
+    heatmap.png
+    sos.png
 ```
 
 ---
 
-## Prerequisites
+## [Getting Started]
 
-- Python 3.10+
-- MongoDB URI (Atlas/local)
+### Prerequisites
+
+- **Python 3.10+**
+- **MongoDB** (Atlas or local) and a valid `MONGO_URI`
 - Model files present:
   - `pothole_detection/road_damage.pt`
   - `yolov8n.pt` (repo root)
 
----
-
-## Local Setup
-
-### 1) Clone and create virtual environment
+### Installation
 
 ```bash
-git clone https://github.com/<your-username>/road-safety.git
-cd road-safety
 python -m venv venv
 ```
 
-Windows:
+Windows (PowerShell):
 
-```bat
-venv\Scripts\activate
+```powershell
+venv\Scripts\Activate.ps1
 ```
 
-Linux/macOS:
-
-```bash
-source venv/bin/activate
-```
-
-### 2) Install dependencies
+Install deps:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3) Create `.env`
+### Environment variables
 
-Create a `.env` in project root:
+Create `.env` in the repository root:
 
 ```env
 # Database
 MONGO_URI=mongodb+srv://<user>:<pass>@<cluster>/<db>?retryWrites=true&w=majority
 
-# Optional: emergency destination numbers
+# Optional: fixed emergency destinations
 POLICE_TO=+91XXXXXXXXXX
 HOSPITAL_TO=+91XXXXXXXXXX
 EMERGENCY_RADIUS_M=1000
@@ -133,75 +187,79 @@ SLACK_WEBHOOK=https://hooks.slack.com/services/xxx/yyy/zzz
 ACCIDENT_EMERGENCY_COOLDOWN_SEC=300
 ```
 
-### 4) Run the app
+---
+
+## [Usage]
+
+### Run locally
 
 ```bash
 python pothole_detection/app.py
 ```
 
-Open:
+Open the UI:
 
-- Dashboard: `http://127.0.0.1:5000`
-- Upload: `http://127.0.0.1:5000/upload`
-- Live Feed: `http://127.0.0.1:5000/live`
-- Heatmap: `http://127.0.0.1:5000/heatmap`
-- SOS: `http://127.0.0.1:5000/sos`
+- **Dashboard**: `http://127.0.0.1:5000/`
+- **Live camera**: `http://127.0.0.1:5000/live`
+- **Heatmap**: `http://127.0.0.1:5000/heatmap`
+- **SOS**: `http://127.0.0.1:5000/sos`
 
----
-
-## Docker
-
-### Build and run
+### Run with Docker
 
 ```bash
 docker compose up --build
 ```
 
-App: `http://127.0.0.1:5000`
+App: `http://127.0.0.1:5000/`
 
 ---
 
-## Key API Endpoints
+## [API Reference]
+
+Base URL (local): `http://127.0.0.1:5000`
 
 ### Detection
 
-- `POST /api/detect/image` - image road-damage detection
-- `POST /api/detect/multithreat` - multi-threat analysis + optional emergency dispatch
-- `POST /api/detect/video` - video processing
-- `POST /api/enhance` - night/low-light enhancement (if module available)
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/api/detect/image` | Image road-damage detection (supports optional `lat`,`lng`) |
+| POST | `/api/detect/video` | Video detection pipeline |
+| POST | `/api/detect/multithreat` | Damage + traffic + animals + accident risk report |
+| POST | `/api/enhance` | Low-light enhancement (only when enhancement module is available) |
 
-### Dashboard/Data
+### Analytics & Data
 
-- `GET /api/stats`
-- `GET /api/damage/breakdown`
-- `GET /api/detections?severity=<none|low|medium|high>&limit=50`
-- `GET /api/chart/daily?days=7`
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/stats` | Global severity + damage totals |
+| GET | `/api/damage/breakdown` | Totals per damage type |
+| GET | `/api/detections?severity=&limit=` | Recent detections (filterable) |
+| GET | `/api/chart/daily?days=7` | Daily detection trend |
 
 ### Webcam
 
-- `POST /api/webcam/start`
-- `POST /api/webcam/stop`
-- `GET /api/webcam/feed`
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/api/webcam/start` | Start webcam worker thread |
+| POST | `/api/webcam/stop` | Stop webcam |
+| GET | `/api/webcam/feed` | MJPEG annotated frame stream |
 
-### Alerts + GPS + SOS
+### Alerts, GPS, SOS, Voice
 
-- `GET /api/alerts/stream?user_id=<id>` (SSE)
-- `POST /api/gps/update`
-- `GET /api/gps/latest/<user_id>`
-- `GET /api/gps/latest?user_id=<user_id>&max_age_seconds=180`
-- `POST /api/sos/trigger` (`notify_mode=call|sms|both|none`)
-- `GET /api/route/suggest`
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/alerts/stream?user_id=` | SSE: real-time alert stream |
+| POST | `/api/gps/update` | Upsert live user GPS (and optional contacts) |
+| GET | `/api/gps/latest/<user_id>` | Latest location for user |
+| GET | `/api/gps/latest?user_id=&max_age_seconds=180` | Latest location for user (query form) |
+| POST | `/api/sos/trigger` | Trigger SOS (`notify_mode=call|sms|both|none`) |
+| GET | `/api/route/suggest` | Best-effort route suggestion |
+| GET | `/api/voice/twiml` | Twilio TwiML (`<Say>`) endpoint |
+| POST/GET | `/api/voice/status` | Twilio status callback for retry/fail-safe |
 
-### Voice callbacks
+### Quick examples
 
-- `GET /api/voice/twiml`
-- `POST|GET /api/voice/status`
-
----
-
-## Quick API Examples
-
-### Update live GPS
+Update live GPS:
 
 ```bash
 curl -X POST http://127.0.0.1:5000/api/gps/update \
@@ -209,13 +267,7 @@ curl -X POST http://127.0.0.1:5000/api/gps/update \
   -d "{\"user_id\":\"u1\",\"lat\":23.5204,\"lng\":87.3119,\"phone_number\":\"+91XXXXXXXXXX\"}"
 ```
 
-### Fetch latest GPS for user
-
-```bash
-curl "http://127.0.0.1:5000/api/gps/latest/u1"
-```
-
-### Trigger SOS (call + SMS)
+Trigger SOS (call + SMS):
 
 ```bash
 curl -X POST http://127.0.0.1:5000/api/sos/trigger \
@@ -225,40 +277,99 @@ curl -X POST http://127.0.0.1:5000/api/sos/trigger \
 
 ---
 
-## Performance and Reliability Notes
+## [Screenshots / Demo]
 
-- YOLO models are loaded once at startup to reduce per-request latency.
-- Emergency dispatch runs calls/SMS in background threads.
-- Voice callback status supports retry logic (`MAX_CALL_RETRIES`).
-- Geospatial queries use MongoDB `2dsphere` index on `user_locations.loc`.
-- SOS radius targeting defaults to `1000m` (`EMERGENCY_RADIUS_M`).
+> Place your media in `assets/` (paths below are ready for GitHub rendering).
 
----
+**Dashboard**
 
-## Troubleshooting
+![RoadGuard AI Dashboard](assets/dashboard.png)
 
-- `No recent location for this user`
-  - Call `/api/gps/update` first.
-  - Check `max_age_seconds` in `/api/gps/latest`.
-- Voice call says it cannot fetch TwiML
-  - `PUBLIC_BASE_URL` must be publicly reachable (use tunnel/ngrok in local dev).
-- `MONGO_URI` errors
-  - Verify `.env` is loaded and URI is valid.
-- Model load failure
-  - Confirm `pothole_detection/road_damage.pt` and `yolov8n.pt` exist.
+**Live detection (webcam)**
+
+![Live Detection Demo](assets/live-detection.gif)
+
+**Heatmap visualization**
+
+![Heatmap](assets/heatmap.png)
+
+**SOS & emergency dispatch**
+
+![SOS](assets/sos.png)
 
 ---
 
-## Roadmap Ideas
+## [Performance & Architecture]
 
-- Nearest police/hospital lookup by map APIs (instead of fixed numbers)
-- Auth + role-based dashboards
-- Structured logs + monitoring
-- Async job queue for heavy video workloads
+- **Single-load inference**: YOLO models are loaded once at startup to reduce per-request latency.
+- **Fail-safe emergency workflow**: emergency dispatch is best-effort and designed not to break detection endpoints when providers are not configured.
+- **Real-time streaming**:
+  - MJPEG webcam feed for annotated frames
+  - SSE for alert streaming with heartbeat keep-alive
+- **Geospatial readiness**: MongoDB `2dsphere` index on `user_locations.loc` enables radius-based targeting and queries.
+- **Operational knobs**:
+  - `EMERGENCY_RADIUS_M` for SOS targeting radius
+  - `ACCIDENT_EMERGENCY_COOLDOWN_SEC` to prevent repeat triggers from continuous webcam loops
 
 ---
 
-## License
+## [Troubleshooting]
 
-This project includes a `LICENSE` file in the repository root.
+- **`No recent location for this user`**
+  - Call `POST /api/gps/update` first.
+  - Increase `max_age_seconds` in `GET /api/gps/latest`.
+
+- **Twilio voice call cannot fetch TwiML / callbacks fail**
+  - Ensure `PUBLIC_BASE_URL` is publicly reachable (use a tunnel such as ngrok for local dev).
+
+- **Mongo connection errors**
+  - Verify `MONGO_URI` is set and valid.
+  - Confirm the DB network access rules (Atlas) allow your IP.
+
+- **Model load failures**
+  - Confirm these files exist:
+    - `pothole_detection/road_damage.pt`
+    - `yolov8n.pt` (repo root)
+
+- **`/upload` route errors**
+  - The Flask app exposes `/upload`, but the template `pothole_detection/templates/upload.html` may be missing. Add it (or remove the route) if you want an upload page UI.
+
+- **Screenshots not rendering**
+  - Ensure `assets/` exists and filenames match:
+    - `assets/dashboard.png`
+    - `assets/live-detection.gif`
+    - `assets/heatmap.png`
+    - `assets/sos.png`
+
+---
+
+## [Roadmap]
+
+- Add authentication + role-based dashboards (city admin / fleet operator)
+- Map-based “nearest hospital/police” lookup via routing APIs (instead of fixed numbers)
+- Async job queue for heavy video workloads (Celery/RQ)
+- Model monitoring + drift checks and structured observability (logs/metrics/traces)
+- Exportable reports (CSV/PDF) for municipal maintenance workflows
+
+---
+
+## [Contributing]
+
+Contributions are welcome.
+
+1. Fork the repo
+2. Create a feature branch: `git checkout -b feature/my-change`
+3. Commit with a clear message
+4. Open a pull request with:
+   - what changed
+   - why it matters
+   - how to test
+
+If you’re adding new endpoints, please update the **[API Reference]** section above.
+
+---
+
+## [License]
+
+This project is licensed under the terms of the `LICENSE` file in the repository root.
 
