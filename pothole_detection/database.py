@@ -286,6 +286,19 @@ def get_latest_user_location(max_age_seconds: int = 180) -> dict | None:
     return doc
 
 
+def get_latest_user_location_for_user(user_id: str, max_age_seconds: int = 180) -> dict | None:
+    """Return latest location for a specific user within freshness window."""
+    if not user_id:
+        return None
+    cutoff = datetime.utcnow() - timedelta(seconds=max_age_seconds)
+    doc = user_locations_col.find_one(
+        {"user_id": user_id, "updated_at": {"$gte": cutoff}},
+        sort=[("updated_at", -1)],
+        projection={"_id": 0, "user_id": 1, "lat": 1, "lng": 1, "updated_at": 1},
+    )
+    return doc
+
+
 def get_nearby_users(
     *,
     lat: float,

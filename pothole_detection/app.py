@@ -467,12 +467,48 @@ def api_gps_update():
         return jsonify({"error": str(e)}), 400
 
 
+@app.route("/api/gps/latest", methods=["GET"])
+@app.route("/api/gps/latest/<user_id>", methods=["GET"])
+def api_gps_latest(user_id=None):
+    """
+    Fetch latest live location for a user.
+    Accepts `user_id` as path param or query param.
+    Optional: `max_age_seconds` (default 180).
+    """
+    from database import get_latest_user_location_for_user
+
+    uid = (user_id or request.args.get("user_id") or "").strip()
+    if not uid:
+        return jsonify({"success": False, "error": "user_id is required"}), 400
+
+    max_age_raw = (request.args.get("max_age_seconds") or "180").strip()
+    try:
+        max_age = int(max_age_raw)
+    except ValueError:
+        return jsonify({"success": False, "error": "max_age_seconds must be an integer"}), 400
+
+    loc = get_latest_user_location_for_user(uid, max_age_seconds=max_age)
+    if not loc:
+        return jsonify({"success": False, "error": "No recent location for this user"}), 404
+
+    return jsonify(
+        {
+            "success": True,
+            "user_id": loc.get("user_id"),
+            "lat": loc.get("lat"),
+            "lng": loc.get("lng"),
+            "updated_at": loc.get("updated_at"),
+        }
+    )
+
+
 @app.route("/api/sos/trigger", methods=["POST"])
 def api_sos_trigger():
     """
     SOS emergency trigger endpoint.
     Required: lat, lng
-    Optional: user_id, emergency_type, severity, family_numbers
+    Optional: user_id, emergency_type, severity, family_numbers, notify_mode
+    notify_mode: call | sms | both | none
     """
     if request.is_json:
         data = request.get_json(silent=True) or {}
@@ -490,6 +526,9 @@ def api_sos_trigger():
 
     try:
         from emergency_system import trigger_emergency
+        notify_mode = (data.get("notify_mode") or "both").strip().lower()
+        voice_call = notify_mode in ("call", "both")
+        sms_alert = notify_mode in ("sms", "both")
         return jsonify(
             trigger_emergency(
                 emergency_type=(data.get("emergency_type") or "accident").strip().lower(),
@@ -498,7 +537,8 @@ def api_sos_trigger():
                 triggered_by_user_id=(data.get("user_id") or None),
                 metadata={"source": "sos_endpoint"},
                 family_numbers=data.get("family_numbers") or [],
-                voice_call=True,
+                voice_call=voice_call,
+                sms_alert=sms_alert,
             )
         )
     except Exception as e:

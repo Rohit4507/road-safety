@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import threading
-from datetime import datetime
 from typing import Any
 
 from alerts import browser_alert
@@ -14,6 +13,9 @@ from voice_service import initiate_voice_call
 POLICE_TO_NUMBER = os.getenv("POLICE_TO", "").strip()
 HOSPITAL_TO_NUMBER = os.getenv("HOSPITAL_TO", "").strip()
 EMERGENCY_RADIUS_M = int(os.getenv("EMERGENCY_RADIUS_M", "1000"))
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_SID", "").strip()
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_TOKEN", "").strip()
+TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM", "").strip()
 
 
 def _severity_to_voice_text(severity: str, emergency_type: str) -> str:
@@ -21,6 +23,36 @@ def _severity_to_voice_text(severity: str, emergency_type: str) -> str:
     et  = (emergency_type or "EMERGENCY").upper()
     # Keep message short to reduce call time and truncation.
     return f"{et} detected with {sev} severity near your location. Please move to safety, slow down, and call emergency services if needed."
+
+
+def _severity_to_sms_text(severity: str, emergency_type: str, location: dict[str, Any], emergency_id: str) -> str:
+    sev = (severity or "high").upper()
+    et = (emergency_type or "EMERGENCY").upper()
+    lat = location.get("lat")
+    lng = location.get("lng")
+    return (
+        f"RoadGuard SOS: {et} ({sev}). "
+        f"Location: {lat}, {lng}. "
+        f"Emergency ID: {emergency_id}. "
+        "Please respond urgently."
+    )
+
+
+def _sms_configured() -> bool:
+    return bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER)
+
+
+def _send_sms(to_number: str, message: str) -> None:
+    if not _sms_configured():
+        return
+    try:
+        from twilio.rest import Client
+
+        twilio = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        twilio.messages.create(to=to_number, from_=TWILIO_FROM_NUMBER, body=message)
+    except Exception:
+        # Best-effort SMS path: keep emergency pipeline non-blocking.
+        pass
 
 
 def _route_suggestion(emergency_type: str, severity: str) -> dict[str, Any]:
@@ -55,6 +87,7 @@ def trigger_emergency(
     metadata: dict[str, Any] | None = None,
     family_numbers: list[str] | None = None,
     voice_call: bool = True,
+    sms_alert: bool = False,
 ) -> dict[str, Any]:
     """
     Emergency dispatch pipeline:
@@ -92,12 +125,18 @@ def trigger_emergency(
     family_numbers = (family_numbers or []) + nearby_family_numbers
 
     # De-duplicate
-    voice_numbers: list[str] = []
+    target_numbers: list[str] = []
     for n in police_numbers + hospital_numbers + family_numbers + nearby_numbers:
-        if n and n not in voice_numbers:
-            voice_numbers.append(n)
+        if n and n not in target_numbers:
+            target_numbers.append(n)
 
     voice_text = _severity_to_voice_text(severity=severity, emergency_type=emergency_type)
+    sms_text = _severity_to_sms_text(
+        severity=severity,
+        emergency_type=emergency_type,
+        location={"lat": float(lat), "lng": float(lng)},
+        emergency_id=emergency_id,
+    )
 
     # 1) Push emergency alert to UI (SSE). We still send it to all, but include targets for filtering if available.
     browser_alert(
@@ -111,9 +150,9 @@ def trigger_emergency(
     )
 
     # 2) Place voice calls in background
-    if voice_call and voice_numbers:
+    if voice_call and target_numbers:
         def _call_all():
-            for number in voice_numbers:
+            for number in target_numbers:
                 initiate_voice_call(
                     emergency_id=emergency_id,
                     to_number=number,
@@ -124,10 +163,23 @@ def trigger_emergency(
 
         threading.Thread(target=_call_all, daemon=True).start()
 
+    # 3) Send SMS alerts in background (best-effort)
+    if sms_alert and target_numbers:
+        def _sms_all():
+            for number in target_numbers:
+                _send_sms(number, sms_text)
+
+        threading.Thread(target=_sms_all, daemon=True).start()
+
     return {
         "success": True,
         "emergency_id": emergency_id,
         "nearby_count": len(nearby_targets),
+        "dispatch": {
+            "voice_call_enabled": bool(voice_call),
+            "sms_enabled": bool(sms_alert),
+            "target_count": len(target_numbers),
+        },
         "targets": {
             "police": police_numbers,
             "hospitals": hospital_numbers,

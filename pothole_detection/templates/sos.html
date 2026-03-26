@@ -54,6 +54,7 @@
         </div>
         <div class="row" style="justify-content:space-between;gap:12px;flex-wrap:wrap">
           <button class="btn2" onclick="saveProfile()">Save Profile</button>
+          <button class="btn2" id="latestLocBtn" type="button">My Latest Saved Location</button>
           <button class="btn" onclick="triggerSOS()" id="sosBtn">TRIGGER SOS</button>
         </div>
         <div class="status" id="statusBox"></div>
@@ -125,7 +126,6 @@
 
   async function publishGpsTick(){
     const myPhone = (localStorage.getItem('roadguard_my_phone') || '').trim();
-    if(!myPhone) return;
     const famRaw = (localStorage.getItem('roadguard_family_numbers') || '').trim();
     const family_numbers = famRaw ? famRaw.split(',').map(s=>s.trim()).filter(Boolean) : [];
     const geo = await getGeo();
@@ -136,6 +136,65 @@
     });
   }
 
+  async function fetchLatestLocation(){
+    let response = await fetch('/api/gps/latest?user_id='+encodeURIComponent(userId));
+    if(response.status === 404){
+      // Fallback to path-param endpoint in case query style route is unavailable.
+      response = await fetch('/api/gps/latest/'+encodeURIComponent(userId));
+    }
+    return response;
+  }
+
+  async function showLatestSavedLocation(){
+    try{
+      setStatus('Checking latest saved location...', true);
+      let response = await fetchLatestLocation();
+      const raw = await response.text();
+      let data = null;
+      try{
+        data = raw ? JSON.parse(raw) : null;
+      }catch(_err){
+        data = null;
+      }
+
+      if(!response.ok){
+        // If no recent record exists, publish a fresh GPS point once and retry.
+        if(response.status === 404){
+          await publishGpsTick();
+          response = await fetchLatestLocation();
+          const retryRaw = await response.text();
+          let retryData = null;
+          try{
+            retryData = retryRaw ? JSON.parse(retryRaw) : null;
+          }catch(_err){
+            retryData = null;
+          }
+          if(!response.ok){
+            const retryDetail = (retryData && retryData.error) ? retryData.error : (retryRaw || ('HTTP '+response.status));
+            throw new Error(retryDetail);
+          }
+          const lat = Number(retryData.lat);
+          const lng = Number(retryData.lng);
+          const when = retryData.updated_at ? new Date(retryData.updated_at).toLocaleString() : 'unknown time';
+          setStatus('Latest saved location: '+lat.toFixed(6)+', '+lng.toFixed(6)+' ('+when+')', true);
+          logLine('📍 Latest saved location <strong>'+lat.toFixed(6)+', '+lng.toFixed(6)+'</strong> at '+when);
+          return;
+        }
+        const detail = (data && data.error) ? data.error : (raw || ('HTTP '+response.status));
+        throw new Error(detail);
+      }
+
+      const lat = Number(data.lat);
+      const lng = Number(data.lng);
+      const when = data.updated_at ? new Date(data.updated_at).toLocaleString() : 'unknown time';
+      setStatus('Latest saved location: '+lat.toFixed(6)+', '+lng.toFixed(6)+' ('+when+')', true);
+      logLine('📍 Latest saved location <strong>'+lat.toFixed(6)+', '+lng.toFixed(6)+'</strong> at '+when);
+    }catch(e){
+      setStatus('Could not fetch latest saved location: '+e.message, false);
+    }
+  }
+
+  document.getElementById('latestLocBtn').addEventListener('click', ()=>showLatestSavedLocation());
   document.getElementById('sosBtn').addEventListener('click', ()=>triggerSOS());
 
   async function triggerSOS(){
@@ -165,7 +224,8 @@
           lng: geo.lng,
           emergency_type: 'accident',
           severity: 'high',
-          family_numbers
+          family_numbers,
+          notify_mode: 'both'
         })
       });
 
