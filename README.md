@@ -279,25 +279,27 @@ curl -X POST http://127.0.0.1:5000/api/sos/trigger \
 
 ## [Screenshots / Demo]
 
-> Place your media in `assets/` (paths below are ready for GitHub rendering).
 
 **Dashboard**
-
-![RoadGuard AI Dashboard](assets/dashboard.png)
+<img width="1919" height="866" alt="Screenshot 2026-03-26 111125" src="https://github.com/user-attachments/assets/2de51d2b-2b03-4564-ac21-5d512035b0d0" />
+![Road threat scan](<img width="1919" height="864" alt="Screenshot 2026-03-26 113724" src="https://github.com/user-attachments/assets/ec55065a-5dc7-46bd-ac84-008837a0fb94" />)
 
 **Live detection (webcam)**
 
 ![Live Detection Demo](assets/live-detection.gif)
+<img width="1918" height="864" alt="Screenshot 2026-03-26 111301" src="https://github.com/user-attachments/assets/2f090d0c-ebb7-4d39-8603-1a0e83182515" />
 
 **Heatmap visualization**
 
-![Heatmap](assets/heatmap.png)
+<img width="1919" height="861" alt="Screenshot 2026-03-26 120240" src="https://github.com/user-attachments/assets/2d20122f-9e47-44de-be8a-a7a9884aa1db" />
 
 **SOS & emergency dispatch**
 
-![SOS](assets/sos.png)
+<img width="1919" height="858" alt="Screenshot 2026-03-26 111603" src="https://github.com/user-attachments/assets/1e42c667-80c7-44a5-9278-db385f8794aa" />
 
----
+![SOS incooming call](https://github.com/user-attachments/assets/0e9cc823-346e-48ad-9b90-434c827594cb)
+
+![SOS message recieve](https://github.com/user-attachments/assets/2fd3708c-33e4-44be-a472-96b96dd78412)
 
 ## [Performance & Architecture]
 
