@@ -297,9 +297,15 @@ curl -X POST http://127.0.0.1:5000/api/sos/trigger \
 
 <img width="1919" height="858" alt="Screenshot 2026-03-26 111603" src="https://github.com/user-attachments/assets/1e42c667-80c7-44a5-9278-db385f8794aa" />
 
-![SOS incooming call](https://github.com/user-attachments/assets/0e9cc823-346e-48ad-9b90-434c827594cb)
+### 🚨 SOS Incoming Call
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/0e9cc823-346e-48ad-9b90-434c827594cb" width="250"/>
+</p>
 
-![SOS message recieve](https://github.com/user-attachments/assets/2fd3708c-33e4-44be-a472-96b96dd78412)
+### 📩 SOS Message
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/2fd3708c-33e4-44be-a472-96b96dd78412" width="250"/>
+</p>
 
 ## [Performance & Architecture]
 
