@@ -282,7 +282,7 @@ curl -X POST http://127.0.0.1:5000/api/sos/trigger \
 
 **Dashboard**
 <img width="1919" height="866" alt="Screenshot 2026-03-26 111125" src="https://github.com/user-attachments/assets/2de51d2b-2b03-4564-ac21-5d512035b0d0" />
-![Road threat scan](<img width="1919" height="864" alt="Screenshot 2026-03-26 113724" src="https://github.com/user-attachments/assets/ec55065a-5dc7-46bd-ac84-008837a0fb94" />)
+![Road threat scan](https://github.com/user-attachments/assets/ec55065a-5dc7-46bd-ac84-008837a0fb94)
 
 **Live detection (webcam)**
 
