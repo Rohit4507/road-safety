@@ -303,9 +303,7 @@ curl -X POST http://127.0.0.1:5000/api/sos/trigger \
 </p>
 
 ### 📩 SOS Message
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/2fd3708c-33e4-44be-a472-96b96dd78412" width="250"/>
-</p>
+
 
 ## [Performance & Architecture]
 
