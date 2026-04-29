@@ -10,10 +10,9 @@ WORKDIR /app
 
 # Install system dependencies needed for OpenCV
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
-
 # Copy the requirements file into the container
 COPY requirements.txt .
 
@@ -29,8 +28,4 @@ EXPOSE 5000
 # Command to run the application
 CMD ["python", "pothole_detection/app.py"]
 
-# Install modern system dependencies for OpenCV
-RUN apt-get update && apt-get install -y \
-    libgl1 \
-    libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
+
